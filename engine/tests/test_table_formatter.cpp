@@ -97,3 +97,15 @@ TEST_CASE("an empty snapshot still renders a header", "[format]") {
 
     REQUIRE(contains(out, "GROUP"));
 }
+
+TEST_CASE("a long group name is truncated on a utf-8 boundary", "[format]") {
+    SystemSnapshot s = makeSnapshot();
+    // 'a' + 가x9 = 1 + 27 = 28 bytes, so a 27-byte cut lands mid-character.
+    s.groups[0].name = "a가가가가가가가가가";
+    const std::string kept = "a가가가가가가가가";  // 1 + 24 = 25 bytes
+
+    const std::string out = formatSnapshotTable(s);
+
+    REQUIRE(contains(out, kept));
+    REQUIRE_FALSE(contains(out, s.groups[0].name));
+}

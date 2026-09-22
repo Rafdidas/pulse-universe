@@ -1,0 +1,23 @@
+#pragma once
+
+#include <cstddef>
+#include <string>
+
+namespace pulse {
+
+struct Options {
+    bool dump = false;
+    unsigned interval_ms = 1000;
+    unsigned iterations = 0;  // 0 이면 무한 반복
+    size_t max_groups = 40;
+};
+
+enum class ParseResult { Ok, ShowUsage, Error };
+
+// argv 를 파싱한다. Ok 일 때만 out 을 덮어쓴다.
+// 실패하면 error 에 사람이 읽을 이유를 담는다.
+ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::string& error);
+
+std::string usageText();
+
+}  // namespace pulse

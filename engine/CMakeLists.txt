@@ -18,6 +18,7 @@ add_library(pulse_core
   src/core/DataAggregator.cpp
   src/platform/windows/WindowsSystemReader.cpp
   src/cli/TableFormatter.cpp
+  src/cli/Options.cpp
 )
 target_include_directories(pulse_core PUBLIC src)
 if(WIN32)

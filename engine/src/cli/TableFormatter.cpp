@@ -2,6 +2,7 @@
 
 #include <iomanip>
 #include <sstream>
+#include <string>
 
 namespace pulse {
 namespace {
@@ -13,6 +14,19 @@ std::string formatOptionalPct(const std::optional<double>& value) {
     std::ostringstream out;
     out << std::fixed << std::setprecision(1) << *value;
     return out.str();
+}
+
+// UTF-8 연속 바이트(10xxxxxx) 한가운데에서 자르지 않는다.
+// 그러지 않으면 한글 이름 프로그램에서 깨진 바이트가 출력된다.
+std::string truncateUtf8(const std::string& text, size_t max_bytes) {
+    if (text.size() <= max_bytes) {
+        return text;
+    }
+    size_t end = max_bytes;
+    while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80) {
+        --end;
+    }
+    return text.substr(0, end);
 }
 
 }  // namespace
@@ -40,10 +54,7 @@ std::string formatSnapshotTable(const SystemSnapshot& snapshot) {
     out << std::string(84, '-') << "\n";
 
     for (const ProcessGroup& group : snapshot.groups) {
-        std::string name = group.name;
-        if (name.size() > 27) {
-            name = name.substr(0, 27);
-        }
+        const std::string name = truncateUtf8(group.name, 27);
         out << std::left << std::setw(28) << name << std::right << std::setw(8)
             << group.root_pid << std::setw(8) << group.proc_count << std::setw(10)
             << formatOptionalPct(group.cpu_pct) << std::setw(12) << std::setprecision(1)

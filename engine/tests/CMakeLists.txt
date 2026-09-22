@@ -10,6 +10,7 @@ add_executable(pulse-tests
   test_aggregator.cpp
   test_windows_reader.cpp
   test_table_formatter.cpp
+  test_options.cpp
 )
 target_include_directories(pulse-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(pulse-tests PRIVATE Catch2::Catch2WithMain pulse_core)
