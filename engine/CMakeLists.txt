@@ -9,8 +9,13 @@ if(MSVC)
   add_compile_options(/W4 /permissive- /utf-8)
 endif()
 
+add_library(pulse_core
+  src/core/CpuDelta.cpp
+)
+target_include_directories(pulse_core PUBLIC src)
+
 add_executable(pulse-engine src/main.cpp)
-target_include_directories(pulse-engine PRIVATE src)
+target_link_libraries(pulse-engine PRIVATE pulse_core)
 
 enable_testing()
 add_subdirectory(tests)
