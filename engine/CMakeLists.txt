@@ -17,6 +17,7 @@ add_library(pulse_core
   src/core/FlowEstimator.cpp
   src/core/DataAggregator.cpp
   src/platform/windows/WindowsSystemReader.cpp
+  src/cli/TableFormatter.cpp
 )
 target_include_directories(pulse_core PUBLIC src)
 if(WIN32)
