@@ -34,6 +34,19 @@ struct ProcessGroup {
     std::vector<ChildProcess> children;
 };
 
+struct CoreLoad {
+    uint32_t id = 0;
+    double pct = 0.0;
+};
+
+struct Flow {
+    std::string group;  // ProcessGroup::key
+    uint32_t core = 0;
+    double weight = 0.0;
+    // M1 은 추정만 한다. ETW 수집기가 들어오면 "measured" 가 된다.
+    std::string source = "estimated";
+};
+
 struct Ambient {
     uint32_t service_proc_count = 0;
     double service_mem_mb = 0.0;

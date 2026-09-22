@@ -6,6 +6,7 @@ add_executable(pulse-tests
   test_group_builder.cpp
   test_process_filter.cpp
   test_lifecycle_tracker.cpp
+  test_flow_estimator.cpp
 )
 target_include_directories(pulse-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(pulse-tests PRIVATE Catch2::Catch2WithMain pulse_core)
