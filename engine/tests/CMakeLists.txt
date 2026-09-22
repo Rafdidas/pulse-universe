@@ -12,7 +12,6 @@ add_executable(pulse-tests
   test_table_formatter.cpp
   test_options.cpp
 )
-target_include_directories(pulse-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(pulse-tests PRIVATE Catch2::Catch2WithMain pulse_core)
 
 add_test(NAME pulse-tests COMMAND pulse-tests)

@@ -56,7 +56,10 @@ ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::s
         if (std::strcmp(arg, "--dump") == 0) {
             parsed.dump = true;
         } else if (std::strcmp(arg, "--interval-ms") == 0) {
-            if (i + 1 >= argc || !parseUnsigned(argv[++i], parsed.interval_ms)) {
+            if (i + 1 >= argc || !parseUnsigned(argv[++i], parsed.interval_ms) ||
+                parsed.interval_ms < 1) {
+                // 0 은 바쁜 대기(busy-spin) 루프가 되어, 이 도구가 측정하려는
+                // 바로 그 CPU 를 잡아먹고 모든 cpu_pct 를 "-" 로 만든다.
                 error = "invalid --interval-ms";
                 return ParseResult::Error;
             }

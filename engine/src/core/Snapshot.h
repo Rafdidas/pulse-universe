@@ -5,10 +5,24 @@
 #include <string>
 #include <vector>
 
-#include "core/LifecycleTracker.h"
-#include "platform/RawTypes.h"
-
 namespace pulse {
+
+enum class Account { User, System };
+
+struct SpawnedProcess {
+    uint32_t pid = 0;
+    uint32_t ppid = 0;
+    std::string name;
+    // 이 pid 가 속한 그룹의 key. GroupBuilder 결과에서 못 찾으면 빈 문자열로
+    // 남는다 (제외된 svchost 트리 등). LifecycleTracker 는 그룹을 모르므로
+    // 채우지 않는다 — DataAggregator 가 그룹핑 이후에 채운다.
+    std::string group;
+};
+
+struct LifecycleDelta {
+    std::vector<SpawnedProcess> spawned;
+    std::vector<uint32_t> terminated;
+};
 
 struct ChildProcess {
     uint32_t pid = 0;

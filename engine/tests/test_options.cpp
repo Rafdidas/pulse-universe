@@ -54,6 +54,15 @@ TEST_CASE("a negative number is rejected rather than wrapping around", "[options
     REQUIRE(parse({"--dump", "--iterations", "-1"}, options, error) == ParseResult::Error);
 }
 
+TEST_CASE("an interval of zero is rejected", "[options]") {
+    // 0 은 바쁜 대기 루프를 만들어 CPU 를 펙(peg)시키고 모든 cpu_pct 가
+    // "-" 로 렌더링되게 만든다.
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--dump", "--interval-ms", "0"}, options, error) == ParseResult::Error);
+}
+
 TEST_CASE("a non numeric value is rejected", "[options]") {
     Options options;
     std::string error;

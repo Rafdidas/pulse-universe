@@ -62,6 +62,8 @@ TEST_CASE("pids are tracked independently", "[cpu]") {
     const auto a = delta.update(1, 1000, 2000);
     const auto b = delta.update(2, 500, 2000);
 
+    REQUIRE(a.has_value());
+    REQUIRE(b.has_value());
     REQUIRE_THAT(*a, Catch::Matchers::WithinAbs(10.0, 0.0001));
     REQUIRE_THAT(*b, Catch::Matchers::WithinAbs(5.0, 0.0001));
 }

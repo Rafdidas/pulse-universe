@@ -73,15 +73,30 @@ unsigned logicalCoreCount() {
     return info.dwNumberOfProcessors == 0 ? 1u : info.dwNumberOfProcessors;
 }
 
-// 프로세스 핸들을 열어 얻을 수 있는 것만 채운다.
-// 권한이 부족하거나 보호된 프로세스면 조용히 건너뛴다.
-void enrichFromHandle(RawProcess& process) {
-    const HANDLE handle = ::OpenProcess(
-        PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE, process.pid);
-    if (handle == nullptr) {
+// 관리자 권한 토큰이라도 SeDebugPrivilege 는 기본적으로 비활성이다.
+// 활성화하면 보호되지 않은 다른 세션의 프로세스까지 열 수 있다.
+// 권한이 없으면 조용히 실패한다 — 비권한 실행에서는 정상이다.
+void enableDebugPrivilege() {
+    HANDLE token = nullptr;
+    if (::OpenProcessToken(::GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &token) == 0) {
         return;
     }
 
+    LUID luid{};
+    if (::LookupPrivilegeValueW(nullptr, L"SeDebugPrivilege", &luid) != 0) {
+        TOKEN_PRIVILEGES privileges{};
+        privileges.PrivilegeCount = 1;
+        privileges.Privileges[0].Luid = luid;
+        privileges.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+        ::AdjustTokenPrivileges(token, FALSE, &privileges, 0, nullptr, nullptr);
+    }
+
+    ::CloseHandle(token);
+}
+
+// 핸들에서 시각/경로를 읽는다. 메모리는 전체 접근 경로에서만 읽는다 -
+// PROCESS_VM_READ 없이 GetProcessMemoryInfo 를 부르면 실패하기 때문이다.
+void readTimesAndPath(HANDLE handle, RawProcess& process) {
     FILETIME creation{}, exit{}, kernel{}, user{};
     if (::GetProcessTimes(handle, &creation, &exit, &kernel, &user) != 0) {
         process.start_time_ms = fileTimeToUnixMs(creation);
@@ -89,18 +104,43 @@ void enrichFromHandle(RawProcess& process) {
         process.cpu_cumulative_ms = busy_100ns / 10000ull;
     }
 
-    PROCESS_MEMORY_COUNTERS counters{};
-    counters.cb = sizeof(counters);
-    if (::GetProcessMemoryInfo(handle, &counters, sizeof(counters)) != 0) {
-        process.mem_bytes = counters.WorkingSetSize;
-    }
-
     wchar_t path[MAX_PATH] = {};
     DWORD path_len = MAX_PATH;
     if (::QueryFullProcessImageNameW(handle, 0, path, &path_len) != 0) {
         process.image_path = toUtf8(path);
     }
+}
 
+// 프로세스 핸들을 열어 얻을 수 있는 것만 채운다.
+// 전체 접근(PROCESS_VM_READ 포함)이 거부되면 QUERY_LIMITED 만으로 다시
+// 시도한다 - 시각과 경로는 그것만으로도 읽히고, LifecycleTracker 의
+// pid 재사용 판별과 GroupBuilder 의 재사용 가드가 start_time_ms 에 기대기
+// 때문에 완전히 포기하는 것보다 낫다. 메모리 질의만 전체 접근 경로에서
+// 시도한다. 어느 경로든 핸들은 반드시 닫는다.
+void enrichFromHandle(RawProcess& process) {
+    HANDLE handle = ::OpenProcess(
+        PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE, process.pid);
+    if (handle != nullptr) {
+        readTimesAndPath(handle, process);
+
+        PROCESS_MEMORY_COUNTERS_EX counters{};
+        counters.cb = sizeof(counters);
+        if (::GetProcessMemoryInfo(handle,
+                                   reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters),
+                                   sizeof(counters)) != 0) {
+            process.mem_bytes = counters.PrivateUsage;
+        }
+
+        ::CloseHandle(handle);
+        return;
+    }
+
+    handle = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process.pid);
+    if (handle == nullptr) {
+        return;
+    }
+
+    readTimesAndPath(handle, process);
     ::CloseHandle(handle);
 }
 
@@ -116,6 +156,8 @@ Account accountForPid(uint32_t pid) {
 }  // namespace
 
 WindowsSystemReader::WindowsSystemReader() : core_count_(logicalCoreCount()) {
+    enableDebugPrivilege();
+
     PDH_HQUERY query = nullptr;
     if (::PdhOpenQueryW(nullptr, 0, &query) != ERROR_SUCCESS) {
         return;
@@ -193,9 +235,13 @@ RawSample WindowsSystemReader::read() {
                                                    &item_count, items) == ERROR_SUCCESS) {
                     for (DWORD i = 0; i < item_count; ++i) {
                         const std::string name = toUtf8(items[i].szName);
-                        // "_Total" 은 합계 항목이라 코어가 아니다.
-                        // 논리 프로세서가 64개를 넘는 장비에서는 "0,3" 같은
-                        // 프로세서 그룹 표기가 섞여 들어오므로 숫자만인 것만 받는다.
+                        // "_Total" 은 합계 항목이라 코어가 아니므로 숫자만으로
+                        // 이루어진 이름만 받아 걸러낸다. 이 레거시 \Processor(*)
+                        // 카운터는 첫 번째 프로세서 그룹만 보고하므로, 논리
+                        // 프로세서가 64개를 넘는 장비에서는 그 이상이 보이지
+                        // 않는다 (">64 코어" 이름 표기는 "Processor Information"
+                        // PDH 오브젝트 얘기지 이 카운터 얘기가 아니다) - 뒤로
+                        // 미룬 사항으로 남겨둔다.
                         if (!isAllDigits(name)) {
                             continue;
                         }

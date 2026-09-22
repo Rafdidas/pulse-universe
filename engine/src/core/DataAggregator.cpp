@@ -27,6 +27,11 @@ SystemSnapshot DataAggregator::aggregate(const RawSample& sample) {
     std::unordered_map<uint32_t, std::optional<double>> cpu_by_pid;
     cpu_by_pid.reserve(sample.processes.size());
     for (const RawProcess& p : sample.processes) {
+        // 한 표본에 같은 pid 가 두 번 들어오면 두 번째 update 는 방금 저장한
+        // 표본과 비교해 nullopt 를 돌려주고, 유효한 값을 덮어쓴다. 첫 항목만 쓴다.
+        if (cpu_by_pid.find(p.pid) != cpu_by_pid.end()) {
+            continue;
+        }
         cpu_by_pid[p.pid] =
             cpu_delta_.update(p.pid, p.cpu_cumulative_ms, sample.timestamp_ms);
     }
@@ -52,7 +57,10 @@ SystemSnapshot DataAggregator::aggregate(const RawSample& sample) {
         snapshot.cores.push_back(CoreLoad{c.id, c.pct});
         core_pct_sum += c.pct;
     }
-    if (!sample.cores.empty() && seq_ > 1) {
+    // system.cpu_pct 는 sample.cores(PDH)의 평균이다. PDH 는 리더 생성자에서
+    // 이미 첫 수집을 해 두므로 첫 주기부터 유효한 값이 있다 — 델타 기반 값과
+    // 달리 seq_ 에 의존하지 않는다. cores 가 비어 있을 때만 값을 비운다.
+    if (!sample.cores.empty()) {
         snapshot.system.cpu_pct = core_pct_sum / static_cast<double>(sample.cores.size());
     }
 
@@ -81,8 +89,32 @@ SystemSnapshot DataAggregator::aggregate(const RawSample& sample) {
             accumulate(child.pid);
         }
 
+        // 그룹 CPU 는 값을 가진 구성원들의 합이다. 값을 가진 구성원이 하나도
+        // 없을 때만 비운다. 자식이 막 생겨나 아직 두 번째 표본을 못 받은
+        // 주기에는 부분합이 나오는데, 이는 의도된 하한값이다 — 매번 자식이
+        // 하나 늘 때마다 그룹 전체를 비우면 화면이 계속 깜빡인다.
         if (any) {
             g.cpu_pct = sum;
+        }
+    }
+
+    // 5b. lifecycle.spawned[] 의 group 필드를 채운다. 필터 전 grouped.groups
+    // 기준으로 pid -> group key 조회 테이블을 만든다: 제외된 svchost 트리에
+    // 속한 프로세스라도 그 그룹 key 자체는 유효한 정보이기 때문이다.
+    // LifecycleTracker 는 그룹을 모르므로 그 값은 항상 빈 문자열이다.
+    if (!snapshot.lifecycle.spawned.empty()) {
+        std::unordered_map<uint32_t, std::string> group_key_by_pid;
+        for (const ProcessGroup& g : grouped.groups) {
+            group_key_by_pid.emplace(g.root_pid, g.key);
+            for (const ChildProcess& child : g.children) {
+                group_key_by_pid.emplace(child.pid, g.key);
+            }
+        }
+        for (SpawnedProcess& spawned : snapshot.lifecycle.spawned) {
+            const auto it = group_key_by_pid.find(spawned.pid);
+            if (it != group_key_by_pid.end()) {
+                spawned.group = it->second;
+            }
         }
     }
 

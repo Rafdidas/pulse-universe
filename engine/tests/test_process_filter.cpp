@@ -147,14 +147,15 @@ TEST_CASE("the configured weights change the ranking", "[filter]") {
 
     FilterConfig balanced;
     balanced.max_groups = 2;
-    // 10*1.0 + 20*1.0 = 30  loses to  30*1.0 + 5*1.0 = 35
+    // both groups are Account::User, so the 1.5x bonus applies to both:
+    // (10*1.0 + 20*1.0) * 1.5 = 45  loses to  (30*1.0 + 5*1.0) * 1.5 = 52.5
     const auto by_balanced = ProcessFilter(balanced).select(groups, 32768.0);
     REQUIRE(by_balanced[0].name == "cpu_heavy.exe");
 
     FilterConfig memory_led;
     memory_led.max_groups = 2;
     memory_led.cpu_weight = 0.1;
-    // 10*0.1 + 20*1.0 = 21  beats  30*0.1 + 5*1.0 = 8
+    // (10*0.1 + 20*1.0) * 1.5 = 31.5  beats  (30*0.1 + 5*1.0) * 1.5 = 12
     const auto by_memory = ProcessFilter(memory_led).select(groups, 32768.0);
     REQUIRE(by_memory[0].name == "mem_heavy.exe");
 }

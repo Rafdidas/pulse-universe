@@ -36,7 +36,10 @@ int main(int argc, char** argv) {
         std::printf("%s\n", pulse::formatSnapshotTable(snapshot).c_str());
         std::fflush(stdout);
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(options.interval_ms));
+        const bool is_last_iteration = options.iterations != 0 && n + 1 == options.iterations;
+        if (!is_last_iteration) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(options.interval_ms));
+        }
     }
 
     return 0;

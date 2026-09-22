@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 
-namespace pulse {
+#include "core/Snapshot.h"
 
-enum class Account { User, System };
+namespace pulse {
 
 struct RawProcess {
     uint32_t pid = 0;
