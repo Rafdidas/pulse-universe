@@ -1,0 +1,26 @@
+# Build
+build/
+out/
+cmake-build-*/
+*.obj
+*.exe
+*.pdb
+*.ilk
+
+# vcpkg
+vcpkg_installed/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Env
+.env
+.env.local
+
+# Editor / OS
+.vs/
+.idea/
+.DS_Store
+Thumbs.db
