@@ -11,6 +11,7 @@ endif()
 
 add_library(pulse_core
   src/core/CpuDelta.cpp
+  src/core/GroupBuilder.cpp
 )
 target_include_directories(pulse_core PUBLIC src)
 
