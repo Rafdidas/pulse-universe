@@ -184,6 +184,7 @@ VITE_PULSE_WS_URL 가 정의되어 있으면  → 그 값을 사용   (개발: V
 | `flows[].weight` | float 0~1 | 그룹 → 코어 흐름 세기 | Flow 굵기·입자 밀도 |
 | `flows[].source` | `"estimated"` 또는 `"measured"` | 매핑 신뢰도 | Flow 선명도 |
 | `lifecycle.spawned` | array | 실제 생성된 프로세스 | 파티클 수렴 생성 |
+| `lifecycle.spawned[].group` | string | 소속 그룹의 `key`. 그룹에 속하지 않으면 빈 문자열 | 어느 노드에서 생성 연출을 재생할지 |
 | `lifecycle.terminated` | array of pid | 실제 종료된 프로세스 | Collapse / 붕괴 |
 | `ambient` | object | svchost 계열 집계 | 배경 미세 입자 |
 
@@ -239,13 +240,34 @@ Windows는 순간 CPU 사용률을 제공하지 않고 누적 CPU 시간만 제�
 ÷ (1000 ms × 16 cores) = 0.78 %
 ```
 
-**귀결: 엔진 기동 직후 첫 주기에는 CPU 값이 존재하지 않는다.** 이 구간의 `cpu_pct` 는 `null` 로 전송하며, 프론트엔드는 해당 노드를 무채색으로 표시했다가 첫 실측이 도착하면 활성화한다. 결함이 아니라 의도된 인트로로 취급한다.
+**귀결: 엔진 기동 직후 첫 주기에는 프로세스·그룹의 CPU 값이 존재하지 않는다.** 이 구간의 `groups[].cpu_pct` 는 `null` 로 전송하며, 프론트엔드는 해당 노드를 무채색으로 표시했다가 첫 실측이 도착하면 활성화한다. 결함이 아니라 의도된 인트로로 취급한다.
+
+**단, `system.cpu_pct` 는 이 규칙에서 제외된다.** 이 값은 델타에서 파생되지 않고 코어별 부하(PDH)의 평균이며, 수집기가 생성 시점에 이미 한 번 수집해 두므로 첫 스냅샷부터 유효하다. `system.cpu_pct` 가 `null` 인 경우는 코어 목록 자체가 비어 있을 때뿐이다.
+
+### 6.1.1 메모리 지표
+
+`groups[].mem_mb` 는 구성원 프로세스의 `WorkingSetSize` 합이다.
+
+작업 관리자의 "메모리" 열은 private working set(상주 + 비공유)이지만 `GetProcessMemoryInfo` 로는 얻을 수 없다. 얻을 수 있는 두 값은 모두 과대 계상한다. `WorkingSetSize` 는 공유 페이지를 그룹 구성원 수만큼 중복 계산하고, `PROCESS_MEMORY_COUNTERS_EX::PrivateUsage` 는 상주하지 않는 커밋까지 포함한다. 본 개발 PC 실측에서 후자가 더 크게 벗어났다.
+
+```
+                 WorkingSetSize    PrivateUsage
+whale.exe  x31      4344 MB           5135 MB
+Code.exe   x29      3379 MB           3800 MB
+Figma.exe  x14      2526 MB           4709 MB
+```
+
+따라서 `WorkingSetSize` 를 쓴다. 실제 private working set 은 `NtQueryInformationProcess` 가 필요하며 후속 과제로 남긴다.
 
 ### 6.2 Thread Flow 추정
 
 1차 구현에서 `flows` 는 실측이 아니다. 그룹의 CPU 점유율을 현재 코어별 부하에 비례 배분해 `weight` 를 만든다. 기여도가 낮은 흐름은 잘라내어 화면을 어지럽히지 않는다.
 
 이 값은 `source: "estimated"` 로 표시되고 시각적으로 낮은 불투명도로 그려진다. ETW 확장이 들어오면 동일한 필드가 `"measured"` 로 바뀌고 선명해진다. **추정을 실측처럼 보여주지 않는 것**이 이 설계의 원칙이다.
+
+**ETW 교체 비용에 대한 정정 (M1 구현 후).** 이 문서는 당초 ETW 수집기를 끼워 넣어도 위 레이어가 바뀌지 않는다고 서술했다. M1 구현 결과 그 주장은 과장이었다. 와이어 필드(`flows[].source`)는 예약돼 있지만 **데이터 모델에는 측정값이 들어갈 자리가 없다.** `RawSample` 은 프로세스 목록과 코어 목록을 서로 무관한 두 배열로 담고 있고, ETW 수집기의 산출물은 바로 그 둘을 잇는 스레드-코어 매핑이다. 실제 교체에는 최소한 `RawSample` 의 새 필드, `FlowEstimator` 를 대체할 생산자, 그리고 `DataAggregator` 의 분기가 필요하다.
+
+시각화 레이어(Layer 4)는 여전히 영향을 받지 않는다 — 그쪽은 `Flow` 의 `weight` 와 `source` 만 읽는다. 바뀌는 범위는 Layer 1 내부와 `RawSample` 경계까지다. 측정값의 형태가 확정되기 전에 미리 자리를 비워두는 것은 이득이 없으므로, M1 시점에는 이 제약을 기록만 하고 구조를 바꾸지 않는다.
 
 ### 6.3 검증 방법
 
