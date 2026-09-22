@@ -13,6 +13,7 @@ add_library(pulse_core
   src/core/CpuDelta.cpp
   src/core/GroupBuilder.cpp
   src/core/ProcessFilter.cpp
+  src/core/LifecycleTracker.cpp
 )
 target_include_directories(pulse_core PUBLIC src)
 
