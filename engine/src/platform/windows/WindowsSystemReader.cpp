@@ -123,12 +123,16 @@ void enrichFromHandle(RawProcess& process) {
     if (handle != nullptr) {
         readTimesAndPath(handle, process);
 
-        PROCESS_MEMORY_COUNTERS_EX counters{};
+        // 작업 관리자의 "메모리" 열은 private working set(상주 + 비공유)이지만
+        // GetProcessMemoryInfo 로는 얻을 수 없다. 선택지는 둘뿐이고 둘 다 과대 계상한다.
+        // WorkingSetSize 는 공유 페이지를 그룹 구성원 수만큼 중복 계산하고,
+        // PROCESS_MEMORY_COUNTERS_EX::PrivateUsage 는 상주하지 않는 커밋까지 포함한다.
+        // 실측에서 후자가 더 크게 벗어나 전자를 쓴다.
+        // 실제 private working set 은 NtQueryInformationProcess 가 필요하다 — 후속 과제.
+        PROCESS_MEMORY_COUNTERS counters{};
         counters.cb = sizeof(counters);
-        if (::GetProcessMemoryInfo(handle,
-                                   reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters),
-                                   sizeof(counters)) != 0) {
-            process.mem_bytes = counters.PrivateUsage;
+        if (::GetProcessMemoryInfo(handle, &counters, sizeof(counters)) != 0) {
+            process.mem_bytes = counters.WorkingSetSize;
         }
 
         ::CloseHandle(handle);
