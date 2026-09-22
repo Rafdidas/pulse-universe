@@ -99,3 +99,33 @@ TEST_CASE("everything disappearing reports every pid as terminated", "[lifecycle
     REQUIRE(containsPid(delta.terminated, 1));
     REQUIRE(containsPid(delta.terminated, 2));
 }
+
+TEST_CASE("a pid repeated within one sample is reported once", "[lifecycle]") {
+    LifecycleTracker tracker;
+    tracker.update({makeProcess(1, 0, "a.exe")});
+
+    const auto delta = tracker.update({
+        makeProcess(1, 0, "a.exe"),
+        makeProcess(2, 1, "dup.exe", 5000),
+        makeProcess(2, 1, "dup.exe", 5000),
+    });
+
+    REQUIRE(delta.spawned.size() == 1);
+    REQUIRE(delta.spawned[0].pid == 2);
+    REQUIRE(delta.terminated.empty());
+}
+
+TEST_CASE("a reused pid repeated within one sample is reported once", "[lifecycle]") {
+    LifecycleTracker tracker;
+    tracker.update({makeProcess(5, 0, "old.exe", 1000)});
+
+    const auto delta = tracker.update({
+        makeProcess(5, 0, "new.exe", 9000),
+        makeProcess(5, 0, "new.exe", 9000),
+    });
+
+    REQUIRE(delta.terminated.size() == 1);
+    REQUIRE(delta.terminated[0] == 5);
+    REQUIRE(delta.spawned.size() == 1);
+    REQUIRE(delta.spawned[0].name == "new.exe");
+}
