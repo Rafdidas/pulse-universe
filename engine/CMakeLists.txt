@@ -16,8 +16,12 @@ add_library(pulse_core
   src/core/LifecycleTracker.cpp
   src/core/FlowEstimator.cpp
   src/core/DataAggregator.cpp
+  src/platform/windows/WindowsSystemReader.cpp
 )
 target_include_directories(pulse_core PUBLIC src)
+if(WIN32)
+  target_link_libraries(pulse_core PUBLIC pdh psapi)
+endif()
 
 add_executable(pulse-engine src/main.cpp)
 target_link_libraries(pulse-engine PRIVATE pulse_core)
