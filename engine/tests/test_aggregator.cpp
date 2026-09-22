@@ -1,0 +1,181 @@
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+
+#include "core/DataAggregator.h"
+
+using namespace pulse;
+
+namespace {
+
+RawProcess makeProcess(uint32_t pid, uint32_t ppid, std::string name,
+                       uint64_t cpu_cumulative_ms, uint64_t mem_bytes,
+                       uint32_t thread_count = 1, uint64_t start_time_ms = 1000) {
+    RawProcess p;
+    p.pid = pid;
+    p.ppid = ppid;
+    p.name = std::move(name);
+    p.cpu_cumulative_ms = cpu_cumulative_ms;
+    p.mem_bytes = mem_bytes;
+    p.thread_count = thread_count;
+    p.start_time_ms = start_time_ms;
+    p.account = Account::User;
+    return p;
+}
+
+RawSample makeSample(std::vector<RawProcess> processes, uint64_t timestamp_ms) {
+    RawSample s;
+    s.processes = std::move(processes);
+    s.cores = {RawCore{0, 50.0}, RawCore{1, 50.0}};
+    s.memory = RawMemory{8ull * 1024 * 1024 * 1024, 32ull * 1024 * 1024 * 1024};
+    s.timestamp_ms = timestamp_ms;
+    return s;
+}
+
+}  // namespace
+
+TEST_CASE("the first snapshot has no cpu readings", "[aggregate]") {
+    // 스펙 6.1: 기동 직후 첫 주기에는 CPU 값이 존재하지 않는다.
+    DataAggregator aggregator(2);
+
+    const auto snap = aggregator.aggregate(
+        makeSample({makeProcess(1, 0, "a.exe", 1000, 100ull * 1024 * 1024)}, 1000));
+
+    REQUIRE(snap.groups.size() == 1);
+    REQUIRE_FALSE(snap.groups[0].cpu_pct.has_value());
+    REQUIRE_FALSE(snap.system.cpu_pct.has_value());
+}
+
+TEST_CASE("the second snapshot carries cpu readings", "[aggregate]") {
+    DataAggregator aggregator(2);
+    aggregator.aggregate(
+        makeSample({makeProcess(1, 0, "a.exe", 1000, 100ull * 1024 * 1024)}, 1000));
+
+    const auto snap = aggregator.aggregate(
+        makeSample({makeProcess(1, 0, "a.exe", 1100, 100ull * 1024 * 1024)}, 2000));
+
+    REQUIRE(snap.groups[0].cpu_pct.has_value());
+    REQUIRE_THAT(*snap.groups[0].cpu_pct, Catch::Matchers::WithinAbs(5.0, 0.0001));
+}
+
+TEST_CASE("group cpu is the sum of its member processes", "[aggregate]") {
+    DataAggregator aggregator(2);
+    aggregator.aggregate(makeSample(
+        {
+            makeProcess(1, 0, "app.exe", 0, 1024 * 1024, 1, 1000),
+            makeProcess(2, 1, "app.exe", 0, 1024 * 1024, 1, 2000),
+        },
+        1000));
+
+    const auto snap = aggregator.aggregate(makeSample(
+        {
+            makeProcess(1, 0, "app.exe", 100, 1024 * 1024, 1, 1000),
+            makeProcess(2, 1, "app.exe", 100, 1024 * 1024, 1, 2000),
+        },
+        2000));
+
+    REQUIRE(snap.groups.size() == 1);
+    REQUIRE_THAT(*snap.groups[0].cpu_pct, Catch::Matchers::WithinAbs(10.0, 0.0001));
+}
+
+TEST_CASE("the sequence number advances with each snapshot", "[aggregate]") {
+    DataAggregator aggregator(2);
+
+    const auto first = aggregator.aggregate(makeSample({}, 1000));
+    const auto second = aggregator.aggregate(makeSample({}, 2000));
+
+    REQUIRE(first.seq == 1);
+    REQUIRE(second.seq == 2);
+}
+
+TEST_CASE("system totals count every process including filtered ones", "[aggregate]") {
+    AggregatorConfig cfg;
+    cfg.filter.max_groups = 1;
+    DataAggregator aggregator(2, cfg);
+
+    const auto snap = aggregator.aggregate(makeSample(
+        {
+            makeProcess(1, 0, "big.exe", 0, 900ull * 1024 * 1024, 10),
+            makeProcess(2, 0, "small.exe", 0, 1024 * 1024, 5),
+            makeProcess(3, 0, "svchost.exe", 0, 1024 * 1024, 3),
+        },
+        1000));
+
+    REQUIRE(snap.groups.size() == 1);
+    REQUIRE(snap.system.process_total == 3);
+    REQUIRE(snap.system.thread_total == 18);
+}
+
+TEST_CASE("ambient service totals survive filtering", "[aggregate]") {
+    AggregatorConfig cfg;
+    cfg.filter.max_groups = 1;
+    DataAggregator aggregator(2, cfg);
+
+    const auto snap = aggregator.aggregate(makeSample(
+        {
+            makeProcess(1, 0, "big.exe", 0, 900ull * 1024 * 1024),
+            makeProcess(2, 0, "svchost.exe", 0, 100ull * 1024 * 1024),
+        },
+        1000));
+
+    REQUIRE(snap.ambient.service_proc_count == 1);
+    REQUIRE_THAT(snap.ambient.service_mem_mb, Catch::Matchers::WithinAbs(100.0, 0.01));
+}
+
+TEST_CASE("lifecycle is tracked across the unfiltered set", "[aggregate]") {
+    // 필터 상한이 1이어도, 목록에 오르지 못한 프로세스의 생성이 보고되어야 한다.
+    AggregatorConfig cfg;
+    cfg.filter.max_groups = 1;
+    DataAggregator aggregator(2, cfg);
+
+    aggregator.aggregate(
+        makeSample({makeProcess(1, 0, "big.exe", 0, 900ull * 1024 * 1024)}, 1000));
+
+    const auto snap = aggregator.aggregate(makeSample(
+        {
+            makeProcess(1, 0, "big.exe", 0, 900ull * 1024 * 1024),
+            makeProcess(2, 0, "tiny.exe", 0, 1024 * 1024),
+        },
+        2000));
+
+    REQUIRE(snap.groups.size() == 1);
+    REQUIRE(snap.groups[0].name == "big.exe");
+    REQUIRE(snap.lifecycle.spawned.size() == 1);
+    REQUIRE(snap.lifecycle.spawned[0].name == "tiny.exe");
+}
+
+TEST_CASE("memory totals are converted to megabytes", "[aggregate]") {
+    DataAggregator aggregator(2);
+
+    const auto snap = aggregator.aggregate(makeSample({}, 1000));
+
+    REQUIRE_THAT(snap.system.mem_total_mb, Catch::Matchers::WithinAbs(32768.0, 0.01));
+    REQUIRE_THAT(snap.system.mem_used_mb, Catch::Matchers::WithinAbs(8192.0, 0.01));
+}
+
+TEST_CASE("core loads are carried through", "[aggregate]") {
+    DataAggregator aggregator(2);
+
+    const auto snap = aggregator.aggregate(makeSample({}, 1000));
+
+    REQUIRE(snap.cores.size() == 2);
+    REQUIRE(snap.cores[0].id == 0);
+    REQUIRE_THAT(snap.cores[0].pct, Catch::Matchers::WithinAbs(50.0, 0.0001));
+}
+
+TEST_CASE("system cpu is the mean of core loads", "[aggregate]") {
+    DataAggregator aggregator(2);
+    aggregator.aggregate(makeSample({}, 1000));
+
+    const auto snap = aggregator.aggregate(makeSample({}, 2000));
+
+    REQUIRE(snap.system.cpu_pct.has_value());
+    REQUIRE_THAT(*snap.system.cpu_pct, Catch::Matchers::WithinAbs(50.0, 0.0001));
+}
+
+TEST_CASE("timestamps are carried through", "[aggregate]") {
+    DataAggregator aggregator(2);
+
+    const auto snap = aggregator.aggregate(makeSample({}, 1758531600123));
+
+    REQUIRE(snap.t == 1758531600123);
+}

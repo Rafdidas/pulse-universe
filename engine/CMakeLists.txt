@@ -15,6 +15,7 @@ add_library(pulse_core
   src/core/ProcessFilter.cpp
   src/core/LifecycleTracker.cpp
   src/core/FlowEstimator.cpp
+  src/core/DataAggregator.cpp
 )
 target_include_directories(pulse_core PUBLIC src)
 

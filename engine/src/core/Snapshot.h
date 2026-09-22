@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "core/LifecycleTracker.h"
 #include "platform/RawTypes.h"
 
 namespace pulse {
@@ -50,6 +51,25 @@ struct Flow {
 struct Ambient {
     uint32_t service_proc_count = 0;
     double service_mem_mb = 0.0;
+};
+
+struct SystemTotals {
+    std::optional<double> cpu_pct;
+    double mem_used_mb = 0.0;
+    double mem_total_mb = 0.0;
+    uint32_t process_total = 0;
+    uint32_t thread_total = 0;
+};
+
+struct SystemSnapshot {
+    uint64_t seq = 0;
+    uint64_t t = 0;
+    SystemTotals system;
+    std::vector<CoreLoad> cores;
+    std::vector<ProcessGroup> groups;
+    std::vector<Flow> flows;
+    LifecycleDelta lifecycle;
+    Ambient ambient;
 };
 
 }  // namespace pulse
