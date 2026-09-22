@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
+#include <vector>
 
 #include "core/ProcessFilter.h"
 
@@ -135,4 +136,25 @@ TEST_CASE("an empty input yields an empty result", "[filter]") {
     const ProcessFilter filter;
 
     REQUIRE(filter.select({}, 32768.0).empty());
+}
+
+TEST_CASE("the configured weights change the ranking", "[filter]") {
+    // mem_norm: 6553.6 / 32768 * 100 = 20.0,  1638.4 / 32768 * 100 = 5.0
+    const std::vector<ProcessGroup> groups = {
+        makeGroup("mem_heavy.exe", 1, 6553.6, 10.0),
+        makeGroup("cpu_heavy.exe", 2, 1638.4, 30.0),
+    };
+
+    FilterConfig balanced;
+    balanced.max_groups = 2;
+    // 10*1.0 + 20*1.0 = 30  loses to  30*1.0 + 5*1.0 = 35
+    const auto by_balanced = ProcessFilter(balanced).select(groups, 32768.0);
+    REQUIRE(by_balanced[0].name == "cpu_heavy.exe");
+
+    FilterConfig memory_led;
+    memory_led.max_groups = 2;
+    memory_led.cpu_weight = 0.1;
+    // 10*0.1 + 20*1.0 = 21  beats  30*0.1 + 5*1.0 = 8
+    const auto by_memory = ProcessFilter(memory_led).select(groups, 32768.0);
+    REQUIRE(by_memory[0].name == "mem_heavy.exe");
 }
