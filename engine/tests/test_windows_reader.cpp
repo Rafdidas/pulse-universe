@@ -55,6 +55,19 @@ TEST_CASE("the reader reports one entry per logical core", "[reader][integration
     }
 }
 
+TEST_CASE("cores come back in ascending id order", "[reader][integration]") {
+    // PDH 는 인스턴스 이름을 문자열 순으로 돌려준다. 정렬하지 않으면
+    // 0, 1, 10, 11, ... 19, 2, 20 순이 되어 표에서 코어를 찾을 수 없다.
+    WindowsSystemReader reader;
+
+    const RawSample sample = reader.read();
+
+    REQUIRE_FALSE(sample.cores.empty());
+    for (size_t i = 0; i < sample.cores.size(); ++i) {
+        REQUIRE(sample.cores[i].id == static_cast<uint32_t>(i));
+    }
+}
+
 TEST_CASE("the reader reports plausible memory totals", "[reader][integration]") {
     WindowsSystemReader reader;
 

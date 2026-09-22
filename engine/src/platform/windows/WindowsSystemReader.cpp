@@ -7,6 +7,7 @@
 #include <psapi.h>
 #include <tlhelp32.h>
 
+#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <string>
@@ -269,6 +270,12 @@ RawSample WindowsSystemReader::read() {
             sample.cores.push_back(RawCore{i, 0.0});
         }
     }
+
+    // PDH 는 인스턴스 이름을 문자열 순으로 돌려주므로 정렬하지 않으면
+    // 0, 1, 10, 11, ... 19, 2, 20 순으로 나온다. 표를 눈으로 대조할 때
+    // 코어를 찾을 수 없게 되므로 id 순으로 정렬한다.
+    std::sort(sample.cores.begin(), sample.cores.end(),
+              [](const RawCore& a, const RawCore& b) { return a.id < b.id; });
 
     // --- 메모리 ---
     MEMORYSTATUSEX memory{};
