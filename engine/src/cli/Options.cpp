@@ -37,13 +37,15 @@ bool parseUnsigned(const char* text, unsigned& out) {
 
 std::string usageText() {
     return
-        "pulse-engine 0.1.0\n"
+        "pulse-engine 0.2.0\n"
         "\n"
         "Usage:\n"
         "  pulse-engine --dump [--interval-ms N] [--iterations N] [--max-groups N]\n"
+        "  pulse-engine --json [--interval-ms N] [--max-groups N]\n"
         "\n"
         "  --dump            Print a process group table every interval.\n"
-        "  --interval-ms N   Sampling interval in milliseconds (default 1000).\n"
+        "  --json            Print one snapshot as contract-shaped JSON and exit.\n"
+        "  --interval-ms N   Sampling interval in milliseconds (default 1000, minimum 1).\n"
         "  --iterations N    Stop after N snapshots (default: run until Ctrl+C).\n"
         "  --max-groups N    Number of groups to show (default 40).\n";
 }
@@ -51,15 +53,28 @@ std::string usageText() {
 ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::string& error) {
     Options parsed;
 
+    const auto setMode = [&](Mode mode, const char* flag) {
+        if (parsed.mode != Mode::None) {
+            error = std::string("only one mode may be given, saw ") + flag;
+            return false;
+        }
+        parsed.mode = mode;
+        return true;
+    };
+
     for (int i = 1; i < argc; ++i) {
         const char* arg = argv[i];
         if (std::strcmp(arg, "--dump") == 0) {
-            parsed.dump = true;
+            if (!setMode(Mode::Dump, arg)) {
+                return ParseResult::Error;
+            }
+        } else if (std::strcmp(arg, "--json") == 0) {
+            if (!setMode(Mode::Json, arg)) {
+                return ParseResult::Error;
+            }
         } else if (std::strcmp(arg, "--interval-ms") == 0) {
             if (i + 1 >= argc || !parseUnsigned(argv[++i], parsed.interval_ms) ||
-                parsed.interval_ms < 1) {
-                // 0 은 바쁜 대기(busy-spin) 루프가 되어, 이 도구가 측정하려는
-                // 바로 그 CPU 를 잡아먹고 모든 cpu_pct 를 "-" 로 만든다.
+                parsed.interval_ms == 0) {
                 error = "invalid --interval-ms";
                 return ParseResult::Error;
             }
@@ -81,7 +96,7 @@ ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::s
         }
     }
 
-    if (!parsed.dump) {
+    if (parsed.mode == Mode::None) {
         return ParseResult::ShowUsage;
     }
 

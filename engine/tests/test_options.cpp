@@ -28,10 +28,26 @@ TEST_CASE("dump alone uses the documented defaults", "[options]") {
     std::string error;
 
     REQUIRE(parse({"--dump"}, options, error) == ParseResult::Ok);
-    REQUIRE(options.dump);
+    REQUIRE(options.mode == Mode::Dump);
     REQUIRE(options.interval_ms == 1000);
     REQUIRE(options.iterations == 0);
     REQUIRE(options.max_groups == 40);
+}
+
+TEST_CASE("json selects its own mode", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--json"}, options, error) == ParseResult::Ok);
+    REQUIRE(options.mode == Mode::Json);
+}
+
+TEST_CASE("two modes at once are rejected", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--dump", "--json"}, options, error) == ParseResult::Error);
+    REQUIRE_FALSE(error.empty());
 }
 
 TEST_CASE("a value is read for each flag", "[options]") {
@@ -54,15 +70,6 @@ TEST_CASE("a negative number is rejected rather than wrapping around", "[options
     REQUIRE(parse({"--dump", "--iterations", "-1"}, options, error) == ParseResult::Error);
 }
 
-TEST_CASE("an interval of zero is rejected", "[options]") {
-    // 0 은 바쁜 대기 루프를 만들어 CPU 를 펙(peg)시키고 모든 cpu_pct 가
-    // "-" 로 렌더링되게 만든다.
-    Options options;
-    std::string error;
-
-    REQUIRE(parse({"--dump", "--interval-ms", "0"}, options, error) == ParseResult::Error);
-}
-
 TEST_CASE("a non numeric value is rejected", "[options]") {
     Options options;
     std::string error;
@@ -70,6 +77,13 @@ TEST_CASE("a non numeric value is rejected", "[options]") {
     REQUIRE(parse({"--dump", "--iterations", "abc"}, options, error) == ParseResult::Error);
     REQUIRE(parse({"--dump", "--iterations", "3x"}, options, error) == ParseResult::Error);
     REQUIRE(parse({"--dump", "--iterations", "+3"}, options, error) == ParseResult::Error);
+}
+
+TEST_CASE("a zero interval is rejected", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--dump", "--interval-ms", "0"}, options, error) == ParseResult::Error);
 }
 
 TEST_CASE("a flag missing its value is rejected", "[options]") {
@@ -94,4 +108,11 @@ TEST_CASE("options are left untouched when parsing fails", "[options]") {
 
     REQUIRE(parse({"--dump", "--interval-ms", "-5"}, options, error) == ParseResult::Error);
     REQUIRE(options.interval_ms == 7);
+}
+
+TEST_CASE("usage mentions every mode", "[options]") {
+    const std::string usage = usageText();
+
+    REQUIRE(usage.find("--dump") != std::string::npos);
+    REQUIRE(usage.find("--json") != std::string::npos);
 }

@@ -5,8 +5,10 @@
 
 namespace pulse {
 
+enum class Mode { None, Dump, Json };
+
 struct Options {
-    bool dump = false;
+    Mode mode = Mode::None;
     unsigned interval_ms = 1000;
     unsigned iterations = 0;  // 0 이면 무한 반복
     size_t max_groups = 40;
