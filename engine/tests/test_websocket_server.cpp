@@ -76,6 +76,20 @@ public:
 
     void close() { ws_.close(websocket::close_code::normal); }
 
+    // 서버가 보낸 close 프레임을 받을 때까지 읽는다.
+    // 정상 종료면 websocket::error::closed, 소켓만 끊기면 다른 코드가 나온다.
+    beast::error_code readUntilClosed() {
+        beast::error_code ec;
+        for (int i = 0; i < 10; ++i) {
+            beast::flat_buffer buffer;
+            ws_.read(buffer, ec);
+            if (ec) {
+                return ec;
+            }
+        }
+        return ec;
+    }
+
 private:
     net::io_context ioc_;
     websocket::stream<tcp::socket> ws_;
@@ -238,4 +252,28 @@ TEST_CASE("run returns only after posted shutdown work has executed", "[ws]") {
     io.join();
 
     REQUIRE(ran_after_stop.load());
+}
+
+TEST_CASE("the server closes sessions with a websocket close frame", "[ws]") {
+    // 서버가 소켓을 그냥 닫으면 클라이언트는 1006(비정상)을 본다.
+    // 정상 종료 프레임을 보내야 M3 프론트엔드가 "서버가 닫았다" 를
+    // "연결이 끊겼다" 와 구분할 수 있다.
+    net::io_context ioc;
+    ServerConfig cfg;
+    cfg.port = 0;
+    WebSocketServer server(ioc, cfg);
+    const unsigned short port = server.port();
+    server.setHello(msg(R"({"type":"hello"})"));
+
+    std::thread io([&] { ioc.run(); });
+
+    TestClient client(port);
+    REQUIRE(client.read() == R"({"type":"hello"})");
+
+    server.stop();
+
+    const beast::error_code ec = client.readUntilClosed();
+    io.join();
+
+    REQUIRE(ec == websocket::error::closed);
 }

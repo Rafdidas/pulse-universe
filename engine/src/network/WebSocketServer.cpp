@@ -42,7 +42,7 @@ public:
     }
 
     void send(std::shared_ptr<const std::string> message) {
-        if (!open_) {
+        if (!open_ || closing_) {
             return;
         }
         if (writing_) {
@@ -55,9 +55,27 @@ public:
     }
 
     void close() {
-        open_ = false;
-        beast::error_code ignored;
-        ws_.next_layer().close(ignored);
+        if (closing_) {
+            return;
+        }
+        closing_ = true;
+
+        // 핸드셰이크 전에 죽은 연결은 보낼 것이 없다. 소켓만 닫는다.
+        if (!open_) {
+            beast::error_code ignored;
+            ws_.next_layer().close(ignored);
+            return;
+        }
+
+        // 큐에 남은 스냅샷은 버린다. 닫기로 한 뒤에 보낼 이유가 없다.
+        pending_.reset();
+
+        // async_close 는 나가는 연산이라 진행 중인 async_write 와 충돌한다.
+        // 쓰기가 끝나면 onWrite 가 이어서 닫는다.
+        if (writing_) {
+            return;
+        }
+        doClose();
     }
 
 private:
@@ -137,6 +155,16 @@ private:
                         });
     }
 
+    void doClose() {
+        open_ = false;
+        ws_.async_close(websocket::close_code::normal,
+                        [self = shared_from_this()](beast::error_code) {
+                            // 실패해도 할 일이 없다. 세션은 이미 목록에서 빠진다.
+                            beast::error_code ignored;
+                            self->ws_.next_layer().close(ignored);
+                        });
+    }
+
     void onWrite(beast::error_code ec) {
         writing_ = false;
         sending_.reset();
@@ -144,6 +172,10 @@ private:
         if (ec) {
             open_ = false;
             server_.removeSession(shared_from_this());
+            return;
+        }
+        if (closing_) {
+            doClose();
             return;
         }
         if (pending_) {
@@ -162,6 +194,7 @@ private:
     std::shared_ptr<const std::string> pending_;
     bool writing_ = false;
     bool open_ = false;
+    bool closing_ = false;
 };
 
 // ---------------------------------------------------------- WebSocketServer
