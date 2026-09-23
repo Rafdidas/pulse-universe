@@ -198,3 +198,21 @@ TEST_CASE("a client that stops reading does not grow an unbounded queue", "[ws]"
     REQUIRE(saw_last);
     client.close();
 }
+
+TEST_CASE("a second server cannot bind a port already in use", "[ws]") {
+    // SO_REUSEADDR 이 설정되어 있으면 두 번째 바인딩이 조용히 성공해
+    // 포트를 가로챈다. 실패해야 한다.
+    net::io_context first_ioc;
+    ServerConfig first_cfg;
+    first_cfg.port = 0;
+    WebSocketServer first(first_ioc, first_cfg);
+
+    ServerConfig second_cfg;
+    second_cfg.port = first.port();
+
+    net::io_context second_ioc;
+    REQUIRE_THROWS([&] { WebSocketServer second(second_ioc, second_cfg); }());
+
+    first.stop();
+    first_ioc.run();
+}

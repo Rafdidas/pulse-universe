@@ -172,7 +172,10 @@ WebSocketServer::WebSocketServer(net::io_context& ioc, ServerConfig cfg)
     const tcp::endpoint endpoint(net::ip::make_address("127.0.0.1"), cfg_.port);
 
     acceptor_.open(endpoint.protocol());
-    acceptor_.set_option(net::socket_base::reuse_address(true));
+    // SO_REUSEADDR 을 설정하지 않는다. Windows 에서는 이 옵션이 다른 프로세스가
+    // 이미 듣고 있는 주소에도 바인딩을 허용해, 두 번째 인스턴스가 조용히 포트를
+    // 가로챈다. 이 엔진은 시스템 전역 프로세스 정보를 내보내므로 그 통제가
+    // 루프백 바인딩에 달려 있다. 기본 동작이 중복 바인딩을 거부한다.
     acceptor_.bind(endpoint);
     acceptor_.listen(net::socket_base::max_listen_connections);
 
