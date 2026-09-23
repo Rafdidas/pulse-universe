@@ -42,12 +42,14 @@ std::string usageText() {
         "Usage:\n"
         "  pulse-engine --dump  [--interval-ms N] [--iterations N] [--max-groups N]\n"
         "  pulse-engine --json  [--interval-ms N] [--max-groups N]\n"
-        "  pulse-engine --serve [--port N] [--interval-ms N] [--iterations N] [--max-groups N]\n"
+        "  pulse-engine --serve [--port N] [--web-root DIR] [--iterations N]\n"
+        "                       [--interval-ms N] [--max-groups N] [--allow-origin URL]\n"
         "\n"
         "  --dump            Print a process group table every interval.\n"
         "  --json            Print one snapshot as contract-shaped JSON and exit.\n"
         "  --serve           Stream snapshots over WebSocket on 127.0.0.1.\n"
         "  --port N          Listen port for --serve (default 9000).\n"
+        "  --web-root DIR    Serve the built frontend from DIR (default: websocket only).\n"
         "  --allow-origin V  Allow an additional Origin for --serve (repeatable).\n"
         "  --interval-ms N   Sampling interval in milliseconds (default 1000, minimum 1).\n"
         "  --iterations N    Stop after N snapshots for --dump and --serve (default: run "
@@ -89,6 +91,16 @@ ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::s
                 return ParseResult::Error;
             }
             parsed.port = value;
+        } else if (std::strcmp(arg, "--web-root") == 0) {
+            if (i + 1 >= argc) {
+                error = "invalid --web-root";
+                return ParseResult::Error;
+            }
+            parsed.web_root = argv[++i];
+            if (parsed.web_root.empty()) {
+                error = "invalid --web-root";
+                return ParseResult::Error;
+            }
         } else if (std::strcmp(arg, "--allow-origin") == 0) {
             if (i + 1 >= argc) {
                 error = "invalid --allow-origin";

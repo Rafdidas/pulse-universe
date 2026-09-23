@@ -15,6 +15,7 @@ struct Options {
     size_t max_groups = 40;
     unsigned port = 9000;
     std::vector<std::string> allowed_origins;  // --serve 에서만 쓰인다.
+    std::string web_root;
 };
 
 enum class ParseResult { Ok, ShowUsage, Error };

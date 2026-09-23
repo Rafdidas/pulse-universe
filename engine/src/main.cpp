@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <filesystem>
 #include <string>
 
 #include "app/EngineLoop.h"
@@ -59,6 +60,14 @@ int runServe(pulse::ISystemReader& reader, const pulse::Options& options) {
         for (const auto& origin : options.allowed_origins) {
             cfg.server.allowed_origins.push_back(origin);
         }
+    }
+    if (!options.web_root.empty()) {
+        if (!std::filesystem::is_directory(options.web_root)) {
+            std::fprintf(stderr, "web root is not a directory: %s\n",
+                         options.web_root.c_str());
+            return 2;
+        }
+        cfg.server.web_root = options.web_root;
     }
 
     const pulse::ServeResult result =

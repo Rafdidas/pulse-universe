@@ -7,7 +7,12 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <utility>
+
+#include "network/StaticFiles.h"
 
 namespace pulse {
 namespace {
@@ -83,6 +88,17 @@ private:
     void onRequest(beast::error_code ec) {
         if (ec) {
             server_.removeSession(shared_from_this());
+            return;
+        }
+
+        if (!websocket::is_upgrade(request_)) {
+            if (server_.cfg_.web_root.empty()) {
+                // 아무 응답 없이 끊으면 브라우저로 주소를 열어본 개발자가 빈 화면만 본다.
+                sendSimple(http::status::upgrade_required,
+                           "this endpoint speaks websocket only", "text/plain");
+                return;
+            }
+            serveStatic();
             return;
         }
 
@@ -198,6 +214,53 @@ private:
             sending_ = std::move(pending_);
             doWrite();
         }
+    }
+
+    void sendSimple(http::status status, const std::string& body,
+                    const std::string& content_type) {
+        auto response = std::make_shared<http::response<http::string_body>>(
+            status, request_.version());
+        response->set(http::field::content_type, content_type);
+        response->body() = body;
+        response->prepare_payload();
+        http::async_write(ws_.next_layer(), *response,
+                          [self = shared_from_this(), response](beast::error_code,
+                                                                std::size_t) {
+                              self->server_.removeSession(self);
+                          });
+    }
+
+    // web_root 아래의 파일로 응답한다. 없으면 index.html 로 대체한다 (SPA 라우팅).
+    void serveStatic() {
+        const std::string& root = server_.cfg_.web_root;
+
+        const auto resolved = resolveWebPath(root, std::string(request_.target()));
+        if (!resolved.has_value()) {
+            std::fprintf(stderr, "refused path outside the web root: %s\n",
+                         std::string(request_.target()).c_str());
+            sendSimple(http::status::forbidden, "forbidden", "text/plain");
+            return;
+        }
+
+        std::string file = *resolved;
+        if (!std::filesystem::is_regular_file(file)) {
+            const auto fallback = resolveWebPath(root, "/index.html");
+            if (!fallback.has_value() || !std::filesystem::is_regular_file(*fallback)) {
+                sendSimple(http::status::not_found, "not found", "text/plain");
+                return;
+            }
+            file = *fallback;
+        }
+
+        std::ifstream input(file, std::ios::binary);
+        if (!input) {
+            sendSimple(http::status::not_found, "not found", "text/plain");
+            return;
+        }
+        std::ostringstream buffer;
+        buffer << input.rdbuf();
+
+        sendSimple(http::status::ok, buffer.str(), mimeTypeFor(file));
     }
 
     websocket::stream<tcp::socket> ws_;

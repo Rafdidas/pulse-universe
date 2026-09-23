@@ -25,6 +25,7 @@ add_library(pulse_core
   src/cli/Options.cpp
   src/network/Serializer.cpp
   src/network/WebSocketServer.cpp
+  src/network/StaticFiles.cpp
 )
 target_include_directories(pulse_core PUBLIC src)
 target_link_libraries(pulse_core PUBLIC Boost::json Boost::beast)

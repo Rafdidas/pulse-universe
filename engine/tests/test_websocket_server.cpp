@@ -4,19 +4,25 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
 #include <boost/beast/websocket.hpp>
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <thread>
+
+#include <windows.h>
 
 #include "network/WebSocketServer.h"
 
 using namespace pulse;
 namespace net = boost::asio;
 namespace beast = boost::beast;
+namespace http = boost::beast::http;
 namespace websocket = boost::beast::websocket;
 using tcp = net::ip::tcp;
 
@@ -316,4 +322,136 @@ TEST_CASE("the server drains after a client aborts mid-write", "[ws]") {
     io.join();  // 드레인되지 않으면 여기서 멈춘다
 
     SUCCEED("io_context drained after the client aborted the connection mid-write");
+}
+
+namespace {
+
+// 임시 디렉터리에 작은 web-root 를 만들고 소멸 시 지운다.
+class TempWebRoot {
+public:
+    TempWebRoot() {
+        root_ = std::filesystem::temp_directory_path() /
+                ("pulse-web-" + std::to_string(::GetCurrentProcessId()) + "-" +
+                 std::to_string(counter_++));
+        std::filesystem::create_directories(root_ / "assets");
+        write(root_ / "index.html", "<html>index</html>");
+        write(root_ / "assets" / "app.js", "console.log(1);");
+    }
+
+    ~TempWebRoot() {
+        std::error_code ignored;
+        std::filesystem::remove_all(root_, ignored);
+    }
+
+    std::string path() const { return root_.string(); }
+
+private:
+    static void write(const std::filesystem::path& file, const std::string& body) {
+        std::ofstream out(file, std::ios::binary);
+        out << body;
+    }
+
+    static inline int counter_ = 0;
+    std::filesystem::path root_;
+};
+
+// 동기 HTTP GET. 응답 전체를 돌려준다.
+http::response<http::string_body> httpGet(unsigned short port, const std::string& target) {
+    net::io_context ioc;
+    tcp::resolver resolver(ioc);
+    beast::tcp_stream stream(ioc);
+    stream.connect(resolver.resolve("127.0.0.1", std::to_string(port)));
+
+    http::request<http::string_body> request(http::verb::get, target, 11);
+    request.set(http::field::host, "127.0.0.1");
+    http::write(stream, request);
+
+    beast::flat_buffer buffer;
+    http::response<http::string_body> response;
+    http::read(stream, buffer, response);
+
+    beast::error_code ignored;
+    stream.socket().shutdown(tcp::socket::shutdown_both, ignored);
+    return response;
+}
+
+}  // namespace
+
+TEST_CASE("a static file is served when a web root is configured", "[ws]") {
+    TempWebRoot web;
+    ServerConfig cfg;
+    cfg.port = 0;
+    cfg.web_root = web.path();
+
+    net::io_context ioc;
+    WebSocketServer server(ioc, cfg);
+    const unsigned short port = server.port();
+    std::thread io([&] { ioc.run(); });
+
+    const auto response = httpGet(port, "/assets/app.js");
+
+    server.stop();
+    io.join();
+
+    REQUIRE(response.result() == http::status::ok);
+    REQUIRE(response.body() == "console.log(1);");
+    REQUIRE(response[http::field::content_type] == "text/javascript");
+}
+
+TEST_CASE("an unknown path falls back to index.html", "[ws]") {
+    // SPA 라우팅. 브라우저가 /universe 로 새로고침해도 앱이 뜬다.
+    TempWebRoot web;
+    ServerConfig cfg;
+    cfg.port = 0;
+    cfg.web_root = web.path();
+
+    net::io_context ioc;
+    WebSocketServer server(ioc, cfg);
+    const unsigned short port = server.port();
+    std::thread io([&] { ioc.run(); });
+
+    const auto response = httpGet(port, "/universe");
+
+    server.stop();
+    io.join();
+
+    REQUIRE(response.result() == http::status::ok);
+    REQUIRE(response.body() == "<html>index</html>");
+}
+
+TEST_CASE("a path escaping the web root is refused", "[ws]") {
+    TempWebRoot web;
+    ServerConfig cfg;
+    cfg.port = 0;
+    cfg.web_root = web.path();
+
+    net::io_context ioc;
+    WebSocketServer server(ioc, cfg);
+    const unsigned short port = server.port();
+    std::thread io([&] { ioc.run(); });
+
+    const auto response = httpGet(port, "/../../windows/win.ini");
+
+    server.stop();
+    io.join();
+
+    REQUIRE(response.result() == http::status::forbidden);
+}
+
+TEST_CASE("without a web root a plain request gets 426 rather than silence", "[ws]") {
+    // 이게 없으면 브라우저로 주소를 열어본 개발자가 빈 화면만 본다.
+    ServerConfig cfg;
+    cfg.port = 0;
+
+    net::io_context ioc;
+    WebSocketServer server(ioc, cfg);
+    const unsigned short port = server.port();
+    std::thread io([&] { ioc.run(); });
+
+    const auto response = httpGet(port, "/");
+
+    server.stop();
+    io.join();
+
+    REQUIRE(response.result() == http::status::upgrade_required);
 }

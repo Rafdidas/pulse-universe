@@ -17,6 +17,10 @@ struct ServerConfig {
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     };
+
+    // 비어 있으면 정적 서빙을 하지 않는다. 그 경우 업그레이드가 아닌 요청에는
+    // 426 Upgrade Required 로 답한다.
+    std::string web_root;
 };
 
 }  // namespace pulse

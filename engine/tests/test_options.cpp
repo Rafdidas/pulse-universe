@@ -212,3 +212,30 @@ TEST_CASE("iterations with serve is accepted", "[options]") {
     REQUIRE(parse({"--serve", "--iterations", "3"}, options, error) == ParseResult::Ok);
     REQUIRE(options.iterations == 3);
 }
+
+TEST_CASE("a web root can be given", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--serve", "--web-root", "C:/web/dist"}, options, error) == ParseResult::Ok);
+    REQUIRE(options.web_root == "C:/web/dist");
+}
+
+TEST_CASE("web root defaults to empty", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--serve"}, options, error) == ParseResult::Ok);
+    REQUIRE(options.web_root.empty());
+}
+
+TEST_CASE("a web root without a value is rejected", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--serve", "--web-root"}, options, error) == ParseResult::Error);
+}
+
+TEST_CASE("usage mentions the web root", "[options]") {
+    REQUIRE(usageText().find("--web-root") != std::string::npos);
+}
