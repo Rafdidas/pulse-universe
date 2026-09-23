@@ -48,6 +48,7 @@ std::string usageText() {
         "  --json            Print one snapshot as contract-shaped JSON and exit.\n"
         "  --serve           Stream snapshots over WebSocket on 127.0.0.1.\n"
         "  --port N          Listen port for --serve (default 9000).\n"
+        "  --allow-origin V  Allow an additional Origin for --serve (repeatable).\n"
         "  --interval-ms N   Sampling interval in milliseconds (default 1000, minimum 1).\n"
         "  --iterations N    Stop after N snapshots (default: run until Ctrl+C).\n"
         "  --max-groups N    Number of groups to show (default 40).\n";
@@ -87,6 +88,12 @@ ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::s
                 return ParseResult::Error;
             }
             parsed.port = value;
+        } else if (std::strcmp(arg, "--allow-origin") == 0) {
+            if (i + 1 >= argc) {
+                error = "invalid --allow-origin";
+                return ParseResult::Error;
+            }
+            parsed.allowed_origins.emplace_back(argv[++i]);
         } else if (std::strcmp(arg, "--interval-ms") == 0) {
             if (i + 1 >= argc || !parseUnsigned(argv[++i], parsed.interval_ms) ||
                 parsed.interval_ms == 0) {

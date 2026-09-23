@@ -1,17 +1,11 @@
 #include <cstdio>
 #include <string>
 
-#include <boost/asio/io_context.hpp>
-#include <boost/asio/signal_set.hpp>
-
-#include <memory>
-#include <thread>
-
 #include "app/EngineLoop.h"
+#include "app/ServeApp.h"
 #include "cli/Options.h"
 #include "cli/TableFormatter.h"
 #include "network/Serializer.h"
-#include "network/WebSocketServer.h"
 #include "platform/windows/WindowsSystemReader.h"
 
 namespace {
@@ -56,74 +50,28 @@ int runJson(pulse::ISystemReader& reader, const pulse::Options& options) {
 }
 
 int runServe(pulse::ISystemReader& reader, const pulse::Options& options) {
-    namespace net = boost::asio;
-
-    net::io_context ioc;
-
-    pulse::ServerConfig server_cfg;
-    server_cfg.port = static_cast<unsigned short>(options.port);
-
-    std::unique_ptr<pulse::WebSocketServer> server;
-    try {
-        server = std::make_unique<pulse::WebSocketServer>(ioc, server_cfg);
-    } catch (const std::exception& e) {
-        std::printf("cannot listen on 127.0.0.1:%u — %s\n", options.port, e.what());
-        return 2;
+    pulse::ServeConfig cfg;
+    cfg.interval_ms = options.interval_ms;
+    cfg.iterations = options.iterations;
+    cfg.max_groups = options.max_groups;
+    cfg.server.port = static_cast<unsigned short>(options.port);
+    if (!options.allowed_origins.empty()) {
+        for (const auto& origin : options.allowed_origins) {
+            cfg.server.allowed_origins.push_back(origin);
+        }
     }
 
-    pulse::HelloInfo hello;
-    hello.interval_ms = options.interval_ms;
-    hello.core_count = reader.coreCount();
-    const pulse::HostInfo host = reader.hostInfo();
-    hello.os = host.os;
-    hello.elevated = host.elevated;
-    server->setHello(
-        std::make_shared<const std::string>(pulse::serializeHello(hello)));
-
-    pulse::EngineLoopConfig loop_cfg;
-    loop_cfg.interval_ms = options.interval_ms;
-    loop_cfg.iterations = options.iterations;
-    loop_cfg.aggregator.filter.max_groups = options.max_groups;
-
-    pulse::EngineLoop loop(reader, loop_cfg, [&](const pulse::SystemSnapshot& snapshot) {
-        server->broadcast(
-            std::make_shared<const std::string>(pulse::serializeSnapshot(snapshot)));
-    });
-
-    // Ctrl+C 로 종료한다. 신호는 io_context 에서 받고 샘플링 루프에 정지를 알린다.
-    net::signal_set signals(ioc, SIGINT, SIGTERM);
-    signals.async_wait([&](const boost::system::error_code&, int) {
-        loop.stop();
-        server->stop();
-    });
-
-    std::printf("pulse-engine listening on ws://127.0.0.1:%u\n",
-                static_cast<unsigned>(server->port()));
-    std::fflush(stdout);
-
-    std::thread sampler([&] {
-        loop.run();
-
-        // ioc.stop() 을 부르지 않는다. run() 은 남은 작업이 없을 때 돌아오고,
-        // post 된 채 아직 실행되지 않은 핸들러도 작업으로 친다. 따라서 stop()
-        // 이 post 한 세션 정리는 반드시 실행된 뒤에야 run() 이 돌아온다.
-        // io_context 를 살려두는 것은 signal_set 의 대기뿐이므로 그것만 취소한다.
-        server->stop();
-        net::post(ioc, [&] {
-            boost::system::error_code ignored;
-            signals.cancel(ignored);
+    const pulse::ServeResult result =
+        pulse::runServe(reader, cfg, [](unsigned short port) {
+            std::printf("pulse-engine listening on ws://127.0.0.1:%u\n",
+                        static_cast<unsigned>(port));
+            std::fflush(stdout);
         });
-    });
 
-    ioc.run();
-    loop.stop();
-    sampler.join();
-
-    if (!loop.error().empty()) {
-        std::printf("sampling failed: %s\n", loop.error().c_str());
-        return 1;
+    if (!result.message.empty()) {
+        std::fprintf(stderr, "%s\n", result.message.c_str());
     }
-    return 0;
+    return result.exit_code;
 }
 
 }  // namespace

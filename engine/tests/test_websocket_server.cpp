@@ -242,23 +242,28 @@ TEST_CASE("a second server cannot bind a port already in use", "[ws]") {
 TEST_CASE("run returns only after posted shutdown work has executed", "[ws]") {
     // runServe 는 이 성질에 기댄다. stop() 은 세션 정리를 post 할 뿐이므로,
     // run() 이 큐에 남은 핸들러를 건너뛰고 돌아오면 정상 종료가 사라진다.
+    // stop() 자신이 post 한 핸들러(세션의 close 프레임 전송)가 실제로
+    // 실행되었는지를 클라이언트 쪽에서 관찰해야 이 성질을 증명한다 —
+    // 제3의 스레드가 stop() 이 반환된 뒤에 post 한 플래그는 Asio 가 순서를
+    // 보장하지 않는 다른 성질이다.
     net::io_context ioc;
     ServerConfig cfg;
     cfg.port = 0;
     WebSocketServer server(ioc, cfg);
+    const unsigned short port = server.port();
+    server.setHello(msg(R"({"type":"hello"})"));
 
-    std::atomic<bool> ran_after_stop{false};
     std::thread io([&] { ioc.run(); });
 
-    std::thread stopper([&] {
-        server.stop();
-        net::post(ioc, [&] { ran_after_stop.store(true); });
-    });
+    TestClient client(port);
+    REQUIRE(client.read() == R"({"type":"hello"})");
 
-    stopper.join();
+    server.stop();
+
+    const beast::error_code ec = client.readUntilClosed();
     io.join();
 
-    REQUIRE(ran_after_stop.load());
+    REQUIRE(ec == websocket::error::closed);
 }
 
 TEST_CASE("the server closes sessions with a websocket close frame", "[ws]") {
@@ -285,7 +290,7 @@ TEST_CASE("the server closes sessions with a websocket close frame", "[ws]") {
     REQUIRE(ec == websocket::error::closed);
 }
 
-TEST_CASE("a write failing while a close is pending still drains the io_context", "[ws]") {
+TEST_CASE("the server drains after a client aborts mid-write", "[ws]") {
     net::io_context ioc;
     ServerConfig cfg;
     cfg.port = 0;
@@ -310,5 +315,5 @@ TEST_CASE("a write failing while a close is pending still drains the io_context"
     server.stop();
     io.join();  // 드레인되지 않으면 여기서 멈춘다
 
-    SUCCEED("io_context drained after the write failed with a close pending");
+    SUCCEED("io_context drained after the client aborted the connection mid-write");
 }

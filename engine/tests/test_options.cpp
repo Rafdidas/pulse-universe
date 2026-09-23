@@ -160,3 +160,31 @@ TEST_CASE("serve cannot be combined with another mode", "[options]") {
     REQUIRE(parse({"--serve", "--dump"}, options, error) == ParseResult::Error);
     REQUIRE(parse({"--json", "--serve"}, options, error) == ParseResult::Error);
 }
+
+TEST_CASE("an allow-origin flag is captured", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--serve", "--allow-origin", "http://localhost:5174"}, options, error) ==
+            ParseResult::Ok);
+    REQUIRE(options.allowed_origins == std::vector<std::string>{"http://localhost:5174"});
+}
+
+TEST_CASE("allow-origin can be given more than once, in order", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--serve", "--allow-origin", "http://localhost:5174", "--allow-origin",
+                   "http://localhost:5175"},
+                  options, error) == ParseResult::Ok);
+    REQUIRE(options.allowed_origins ==
+            std::vector<std::string>{"http://localhost:5174", "http://localhost:5175"});
+}
+
+TEST_CASE("allow-origin missing its value is rejected", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--serve", "--allow-origin"}, options, error) == ParseResult::Error);
+    REQUIRE_FALSE(error.empty());
+}

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 namespace pulse {
 
@@ -13,6 +14,7 @@ struct Options {
     unsigned iterations = 0;  // 0 이면 무한 반복
     size_t max_groups = 40;
     unsigned port = 9000;
+    std::vector<std::string> allowed_origins;  // --serve 에서만 쓰인다.
 };
 
 enum class ParseResult { Ok, ShowUsage, Error };

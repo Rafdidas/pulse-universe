@@ -121,6 +121,11 @@ private:
             return;
         }
         open_ = true;
+
+        // 핸드셰이크 타임아웃, 유휴 타임아웃, 자동 ping 을 한 번에 켠다.
+        // 이게 없으면 절전된 탭이나 잠든 노트북의 세션이 무기한 남는다.
+        ws_.set_option(
+            websocket::stream_base::timeout::suggested(beast::role_type::server));
         ws_.text(true);
         doRead();
 
@@ -218,6 +223,13 @@ WebSocketServer::WebSocketServer(net::io_context& ioc, ServerConfig cfg)
     // 루프백 바인딩에 달려 있다. 기본 동작이 중복 바인딩을 거부한다.
     acceptor_.bind(endpoint);
     acceptor_.listen(net::socket_base::max_listen_connections);
+
+    // 자기 자신의 origin 을 허용한다. M3 가 프론트엔드를 이 엔진에서 서빙하면
+    // 브라우저가 보내는 Origin 이 바로 이 주소가 되는데, 그때 거절당하면
+    // 계약서가 말하는 same-origin 배포가 기본값에서 막힌다.
+    const std::string own = std::to_string(acceptor_.local_endpoint().port());
+    cfg_.allowed_origins.push_back("http://127.0.0.1:" + own);
+    cfg_.allowed_origins.push_back("http://localhost:" + own);
 
     doAccept();
 }
