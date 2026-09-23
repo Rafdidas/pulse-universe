@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -96,35 +97,39 @@ TEST_CASE("a resolved path stays inside a real web root", "[static]") {
     fs::remove_all(root, ignored);
 }
 
-TEST_CASE("a directory symlink pointing outside the root is refused", "[static]") {
-    // 어휘적 검사만으로는 정션과 심볼릭 링크를 볼 수 없다.
+TEST_CASE("a junction pointing outside the root is refused", "[static]") {
+    // 어휘적 검사만으로는 reparse point 를 볼 수 없다. 정션은 권한 없이
+    // 만들 수 있으므로 심볼릭 링크와 달리 어느 기계에서나 검증된다.
     namespace fs = std::filesystem;
-    const fs::path base = fs::temp_directory_path() / "pulse-static-link";
+    std::error_code ignored;
+
+    const fs::path base = fs::temp_directory_path() / "pulse-static-junction";
     const fs::path root = base / "webroot";
     const fs::path outside = base / "outside";
-    std::error_code cleanup_ec;
-    fs::remove_all(base, cleanup_ec);
-    fs::create_directories(root);
-    fs::create_directories(outside);
+    fs::remove_all(base, ignored);
+    fs::create_directories(root, ignored);
+    fs::create_directories(outside, ignored);
     {
         std::ofstream out(outside / "secret.txt", std::ios::binary);
         out << "secret";
     }
 
-    std::error_code link_ec;
-    fs::create_directory_symlink(outside, root / "escape", link_ec);
-    if (link_ec) {
-        // 개발자 모드나 관리자 권한이 없으면 Windows 에서 링크를 만들 수 없다.
-        SUCCEED("symlink creation not permitted in this environment; skipping");
-        std::error_code ignored;
-        fs::remove_all(base, ignored);
-        return;
-    }
+    const std::string command =
+        "cmd /c mklink /J \"" + (root / "escape").string() + "\" \"" + outside.string() +
+        "\" >nul 2>&1";
+    const int created = std::system(command.c_str());
 
-    const auto resolved = resolveWebPath(root.string(), "/escape/secret.txt");
+    const bool have_junction = created == 0 && fs::exists(root / "escape", ignored);
+    REQUIRE(have_junction);
 
-    std::error_code ignored;
+    // 정션을 통해 디스크상으로는 실제로 읽힌다 — 그래서 검사가 필요하다.
+    REQUIRE(fs::exists(root / "escape" / "secret.txt", ignored));
+
+    const auto escaped = resolveWebPath(root.string(), "/escape/secret.txt");
+    const auto inside = resolveWebPath(root.string(), "/index.html");
+
     fs::remove_all(base, ignored);
 
-    REQUIRE_FALSE(resolved.has_value());
+    REQUIRE_FALSE(escaped.has_value());
+    REQUIRE(inside.has_value());
 }

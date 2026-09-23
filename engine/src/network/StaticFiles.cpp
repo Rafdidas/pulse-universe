@@ -60,16 +60,20 @@ std::optional<std::string> resolveWebPath(const std::string& web_root,
     // 위 검사는 순수하게 어휘적이라 정션과 심볼릭 링크를 보지 못한다.
     // web_root 안에 루트 밖을 가리키는 링크가 있으면 그대로 통과하므로,
     // 실제 경로로 풀어 한 번 더 확인한다.
+    //
+    // weakly_canonical 은 존재하지 않는 경로를 오류로 보지 않는다. 여기서
+    // 오류가 났다면 깨졌거나 순환하는 reparse point, 혹은 접근이 막힌 중간
+    // 경로다 — 바로 이 검사가 있어야 할 입력이다. 어휘 검사로 되돌아가면
+    // 링크를 보지 못하므로 거절한다.
     std::error_code resolve_ec;
     const fs::path real_root = fs::weakly_canonical(root, resolve_ec);
     if (resolve_ec) {
-        // 루트 자체를 풀 수 없다. 어휘 검사는 통과했으므로 그 결과를 쓴다.
-        return joined.string();
+        return std::nullopt;
     }
 
     const fs::path real_target = fs::weakly_canonical(joined, resolve_ec);
     if (resolve_ec) {
-        return joined.string();
+        return std::nullopt;
     }
 
     const std::string real_relative = real_target.lexically_relative(real_root).generic_string();
