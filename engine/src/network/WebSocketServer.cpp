@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <system_error>
 #include <utility>
 
 #include "network/StaticFiles.h"
@@ -243,9 +244,12 @@ private:
         }
 
         std::string file = *resolved;
-        if (!std::filesystem::is_regular_file(file)) {
+        std::error_code regular_ec;
+        if (!std::filesystem::is_regular_file(file, regular_ec) || regular_ec) {
             const auto fallback = resolveWebPath(root, "/index.html");
-            if (!fallback.has_value() || !std::filesystem::is_regular_file(*fallback)) {
+            std::error_code fallback_ec;
+            if (!fallback.has_value() ||
+                !std::filesystem::is_regular_file(*fallback, fallback_ec) || fallback_ec) {
                 sendSimple(http::status::not_found, "not found", "text/plain");
                 return;
             }

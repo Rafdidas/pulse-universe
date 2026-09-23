@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 #include "network/StaticFiles.h"
@@ -74,4 +76,55 @@ TEST_CASE("an unknown extension falls back to a binary type", "[static]") {
 
 TEST_CASE("mime lookup ignores case", "[static]") {
     REQUIRE(mimeTypeFor("INDEX.HTML") == "text/html");
+}
+
+TEST_CASE("a resolved path stays inside a real web root", "[static]") {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "pulse-static-ok";
+    fs::create_directories(root);
+    {
+        std::ofstream out(root / "index.html", std::ios::binary);
+        out << "<html></html>";
+    }
+
+    const auto resolved = resolveWebPath(root.string(), "/index.html");
+
+    REQUIRE(resolved.has_value());
+    REQUIRE(fs::path(*resolved).filename() == "index.html");
+
+    std::error_code ignored;
+    fs::remove_all(root, ignored);
+}
+
+TEST_CASE("a directory symlink pointing outside the root is refused", "[static]") {
+    // 어휘적 검사만으로는 정션과 심볼릭 링크를 볼 수 없다.
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() / "pulse-static-link";
+    const fs::path root = base / "webroot";
+    const fs::path outside = base / "outside";
+    std::error_code cleanup_ec;
+    fs::remove_all(base, cleanup_ec);
+    fs::create_directories(root);
+    fs::create_directories(outside);
+    {
+        std::ofstream out(outside / "secret.txt", std::ios::binary);
+        out << "secret";
+    }
+
+    std::error_code link_ec;
+    fs::create_directory_symlink(outside, root / "escape", link_ec);
+    if (link_ec) {
+        // 개발자 모드나 관리자 권한이 없으면 Windows 에서 링크를 만들 수 없다.
+        SUCCEED("symlink creation not permitted in this environment; skipping");
+        std::error_code ignored;
+        fs::remove_all(base, ignored);
+        return;
+    }
+
+    const auto resolved = resolveWebPath(root.string(), "/escape/secret.txt");
+
+    std::error_code ignored;
+    fs::remove_all(base, ignored);
+
+    REQUIRE_FALSE(resolved.has_value());
 }

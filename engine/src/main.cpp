@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <system_error>
 
 #include "app/EngineLoop.h"
 #include "app/ServeApp.h"
@@ -62,7 +63,8 @@ int runServe(pulse::ISystemReader& reader, const pulse::Options& options) {
         }
     }
     if (!options.web_root.empty()) {
-        if (!std::filesystem::is_directory(options.web_root)) {
+        std::error_code dir_ec;
+        if (!std::filesystem::is_directory(options.web_root, dir_ec) || dir_ec) {
             std::fprintf(stderr, "web root is not a directory: %s\n",
                          options.web_root.c_str());
             return 2;

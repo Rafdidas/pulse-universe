@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <system_error>
 
 namespace pulse {
 namespace {
@@ -42,7 +43,12 @@ std::optional<std::string> resolveWebPath(const std::string& web_root,
     }
 
     namespace fs = std::filesystem;
-    const fs::path root = fs::absolute(fs::path(web_root)).lexically_normal();
+    std::error_code abs_ec;
+    const fs::path absolute_root = fs::absolute(fs::path(web_root), abs_ec);
+    if (abs_ec) {
+        return std::nullopt;
+    }
+    const fs::path root = absolute_root.lexically_normal();
     const fs::path joined = (root / fs::path(path.substr(1))).lexically_normal();
 
     // joined 가 root 아래가 아니면 거절한다.
@@ -51,7 +57,27 @@ std::optional<std::string> resolveWebPath(const std::string& web_root,
         return std::nullopt;
     }
 
-    return joined.string();
+    // 위 검사는 순수하게 어휘적이라 정션과 심볼릭 링크를 보지 못한다.
+    // web_root 안에 루트 밖을 가리키는 링크가 있으면 그대로 통과하므로,
+    // 실제 경로로 풀어 한 번 더 확인한다.
+    std::error_code resolve_ec;
+    const fs::path real_root = fs::weakly_canonical(root, resolve_ec);
+    if (resolve_ec) {
+        // 루트 자체를 풀 수 없다. 어휘 검사는 통과했으므로 그 결과를 쓴다.
+        return joined.string();
+    }
+
+    const fs::path real_target = fs::weakly_canonical(joined, resolve_ec);
+    if (resolve_ec) {
+        return joined.string();
+    }
+
+    const std::string real_relative = real_target.lexically_relative(real_root).generic_string();
+    if (real_relative.empty() || real_relative == ".." || real_relative.rfind("../", 0) == 0) {
+        return std::nullopt;
+    }
+
+    return real_target.string();
 }
 
 std::string mimeTypeFor(const std::string& path) {
