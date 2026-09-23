@@ -11,6 +11,7 @@ add_executable(pulse-tests
   test_windows_reader.cpp
   test_table_formatter.cpp
   test_options.cpp
+  test_serializer.cpp
 )
 target_link_libraries(pulse-tests PRIVATE Catch2::Catch2WithMain pulse_core)
 

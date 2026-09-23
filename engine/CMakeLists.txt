@@ -9,6 +9,8 @@ if(MSVC)
   add_compile_options(/W4 /permissive- /utf-8)
 endif()
 
+find_package(Boost REQUIRED COMPONENTS json)
+
 add_library(pulse_core
   src/core/CpuDelta.cpp
   src/core/GroupBuilder.cpp
@@ -19,8 +21,10 @@ add_library(pulse_core
   src/platform/windows/WindowsSystemReader.cpp
   src/cli/TableFormatter.cpp
   src/cli/Options.cpp
+  src/network/Serializer.cpp
 )
 target_include_directories(pulse_core PUBLIC src)
+target_link_libraries(pulse_core PUBLIC Boost::json)
 if(WIN32)
   target_link_libraries(pulse_core PUBLIC pdh psapi)
 endif()

@@ -1,5 +1,5 @@
 {
   "name": "pulse-engine",
   "version": "0.1.0",
-  "dependencies": ["catch2"]
+  "dependencies": ["catch2", "boost-json", "boost-beast"]
 }
