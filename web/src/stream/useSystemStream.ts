@@ -17,10 +17,29 @@ export function useSystemStream(): void {
 
     const stream = new SystemStream({
       url,
-      // WebSocket 의 onopen/onmessage/... 이벤트 타입(Event 등)은 SocketLike 가
-      // 요구하는 unknown 보다 좁아 구조적으로 대입되지 않는다. 실제 런타임 형태는
-      // SocketLike 와 호환되므로 여기서만 단언한다.
-      createSocket: (target) => new WebSocket(target) as unknown as SocketLike,
+      // 진짜 WebSocket 은 SocketLike 에 구조적으로 대입되지 않는다(핸들러 타입이
+      // 반공변으로 검사됨). 어댑터로 감싸 컴파일러가 나머지 필드는 그대로
+      // 검사하게 하고, 검증 불가능한 가정 한 줄만 명시적으로 단언한다.
+      createSocket: (target) => {
+        const socket = new WebSocket(target);
+
+        const adapter: SocketLike = {
+          onopen: null,
+          onmessage: null,
+          onclose: null,
+          onerror: null,
+          close: (code) => socket.close(code),
+        };
+
+        socket.onopen = (ev) => adapter.onopen?.(ev);
+        // 엔진은 텍스트 프레임만 보낸다. 이 한 줄이 유일하게 컴파일러가
+        // 확인해 줄 수 없는 가정이고, 나머지는 그대로 검사된다.
+        socket.onmessage = (ev) => adapter.onmessage?.({ data: ev.data as string });
+        socket.onclose = (ev) => adapter.onclose?.({ code: ev.code });
+        socket.onerror = (ev) => adapter.onerror?.(ev);
+
+        return adapter;
+      },
       setTimer: (fn, ms) => window.setTimeout(fn, ms),
       clearTimer: (handle) => window.clearTimeout(handle),
       onSnapshot: (snapshot) =>

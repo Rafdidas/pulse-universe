@@ -1,4 +1,4 @@
-import type { StreamStatus } from '../stream/SystemStream';
+import type { StreamStatus } from '../state/snapshotStore';
 
 interface Props {
   status: StreamStatus;

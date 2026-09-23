@@ -3,6 +3,10 @@ import { create } from 'zustand';
 import type { Snapshot } from '../protocol/schema';
 import type { StreamStatus } from '../stream/SystemStream';
 
+// 스토어가 들고 있는 상태의 타입이므로 여기서 다시 내보낸다.
+// dashboard/ 는 stream/ 을 직접 참조하지 않는다.
+export type { StreamStatus } from '../stream/SystemStream';
+
 export const LIFECYCLE_LOG_LIMIT = 50;
 
 export interface LifecycleEntry {

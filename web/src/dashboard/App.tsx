@@ -1,6 +1,5 @@
 import { useSnapshotStore } from '../state/snapshotStore';
 import { useInterpolated } from '../state/useInterpolated';
-import { useSystemStream } from '../stream/useSystemStream';
 import { ConnectionBadge } from './ConnectionBadge';
 import { CoreGrid } from './CoreGrid';
 import { FlowList } from './FlowList';
@@ -11,8 +10,6 @@ import { SystemBar } from './SystemBar';
 import './dashboard.css';
 
 export function App() {
-  useSystemStream();
-
   const frame = useInterpolated();
   const status = useSnapshotStore((state) => state.status);
   const lifecycleLog = useSnapshotStore((state) => state.lifecycleLog);
