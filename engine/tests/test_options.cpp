@@ -115,4 +115,39 @@ TEST_CASE("usage mentions every mode", "[options]") {
 
     REQUIRE(usage.find("--dump") != std::string::npos);
     REQUIRE(usage.find("--json") != std::string::npos);
+    REQUIRE(usage.find("--serve") != std::string::npos);
+}
+
+TEST_CASE("serve selects its own mode with a default port", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--serve"}, options, error) == ParseResult::Ok);
+    REQUIRE(options.mode == Mode::Serve);
+    REQUIRE(options.port == 9000);
+}
+
+TEST_CASE("a port can be given", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--serve", "--port", "9100"}, options, error) == ParseResult::Ok);
+    REQUIRE(options.port == 9100);
+}
+
+TEST_CASE("a port outside the valid range is rejected", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--serve", "--port", "0"}, options, error) == ParseResult::Error);
+    REQUIRE(parse({"--serve", "--port", "70000"}, options, error) == ParseResult::Error);
+    REQUIRE(parse({"--serve", "--port", "-1"}, options, error) == ParseResult::Error);
+}
+
+TEST_CASE("serve cannot be combined with another mode", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--serve", "--dump"}, options, error) == ParseResult::Error);
+    REQUIRE(parse({"--json", "--serve"}, options, error) == ParseResult::Error);
 }

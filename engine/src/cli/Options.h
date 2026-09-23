@@ -5,13 +5,14 @@
 
 namespace pulse {
 
-enum class Mode { None, Dump, Json };
+enum class Mode { None, Dump, Json, Serve };
 
 struct Options {
     Mode mode = Mode::None;
     unsigned interval_ms = 1000;
     unsigned iterations = 0;  // 0 이면 무한 반복
     size_t max_groups = 40;
+    unsigned port = 9000;
 };
 
 enum class ParseResult { Ok, ShowUsage, Error };

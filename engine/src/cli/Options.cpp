@@ -40,11 +40,14 @@ std::string usageText() {
         "pulse-engine 0.2.0\n"
         "\n"
         "Usage:\n"
-        "  pulse-engine --dump [--interval-ms N] [--iterations N] [--max-groups N]\n"
-        "  pulse-engine --json [--interval-ms N] [--max-groups N]\n"
+        "  pulse-engine --dump  [--interval-ms N] [--iterations N] [--max-groups N]\n"
+        "  pulse-engine --json  [--interval-ms N] [--max-groups N]\n"
+        "  pulse-engine --serve [--port N] [--interval-ms N] [--max-groups N]\n"
         "\n"
         "  --dump            Print a process group table every interval.\n"
         "  --json            Print one snapshot as contract-shaped JSON and exit.\n"
+        "  --serve           Stream snapshots over WebSocket on 127.0.0.1.\n"
+        "  --port N          Listen port for --serve (default 9000).\n"
         "  --interval-ms N   Sampling interval in milliseconds (default 1000, minimum 1).\n"
         "  --iterations N    Stop after N snapshots (default: run until Ctrl+C).\n"
         "  --max-groups N    Number of groups to show (default 40).\n";
@@ -72,6 +75,18 @@ ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::s
             if (!setMode(Mode::Json, arg)) {
                 return ParseResult::Error;
             }
+        } else if (std::strcmp(arg, "--serve") == 0) {
+            if (!setMode(Mode::Serve, arg)) {
+                return ParseResult::Error;
+            }
+        } else if (std::strcmp(arg, "--port") == 0) {
+            unsigned value = 0;
+            if (i + 1 >= argc || !parseUnsigned(argv[++i], value) || value == 0 ||
+                value > 65535) {
+                error = "invalid --port";
+                return ParseResult::Error;
+            }
+            parsed.port = value;
         } else if (std::strcmp(arg, "--interval-ms") == 0) {
             if (i + 1 >= argc || !parseUnsigned(argv[++i], parsed.interval_ms) ||
                 parsed.interval_ms == 0) {
