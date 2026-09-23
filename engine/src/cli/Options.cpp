@@ -42,7 +42,7 @@ std::string usageText() {
         "Usage:\n"
         "  pulse-engine --dump  [--interval-ms N] [--iterations N] [--max-groups N]\n"
         "  pulse-engine --json  [--interval-ms N] [--max-groups N]\n"
-        "  pulse-engine --serve [--port N] [--interval-ms N] [--max-groups N]\n"
+        "  pulse-engine --serve [--port N] [--interval-ms N] [--iterations N] [--max-groups N]\n"
         "\n"
         "  --dump            Print a process group table every interval.\n"
         "  --json            Print one snapshot as contract-shaped JSON and exit.\n"
@@ -50,7 +50,8 @@ std::string usageText() {
         "  --port N          Listen port for --serve (default 9000).\n"
         "  --allow-origin V  Allow an additional Origin for --serve (repeatable).\n"
         "  --interval-ms N   Sampling interval in milliseconds (default 1000, minimum 1).\n"
-        "  --iterations N    Stop after N snapshots (default: run until Ctrl+C).\n"
+        "  --iterations N    Stop after N snapshots for --dump and --serve (default: run "
+        "until Ctrl+C).\n"
         "  --max-groups N    Number of groups to show (default 40).\n";
 }
 
@@ -96,6 +97,9 @@ ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::s
             parsed.allowed_origins.emplace_back(argv[++i]);
         } else if (std::strcmp(arg, "--interval-ms") == 0) {
             if (i + 1 >= argc || !parseUnsigned(argv[++i], parsed.interval_ms) ||
+                // 0 을 허용하면 표본 사이에 잠들지 않는 바쁜 루프가 되어, 이 도구가
+                // 측정하려는 바로 그 CPU 를 잡아먹는다. 게다가 시계가 전진하지 않아
+                // CpuDelta 가 값을 내지 못해 모든 cpu_pct 가 '-' 로 나온다.
                 parsed.interval_ms == 0) {
                 error = "invalid --interval-ms";
                 return ParseResult::Error;
@@ -120,6 +124,14 @@ ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::s
 
     if (parsed.mode == Mode::None) {
         return ParseResult::ShowUsage;
+    }
+
+    // 플래그는 어떤 순서로도 올 수 있으므로, 모드가 확정된 뒤인 여기서
+    // 한 번에 검사한다. --json 은 늘 정확히 두 번 표본을 뜨므로
+    // --iterations 는 조용히 무시하는 대신 거절한다.
+    if (parsed.mode == Mode::Json && parsed.iterations != 0) {
+        error = "--iterations cannot be combined with --json";
+        return ParseResult::Error;
     }
 
     out = parsed;

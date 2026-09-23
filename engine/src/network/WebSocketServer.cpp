@@ -6,6 +6,7 @@
 #include <boost/beast/websocket.hpp>
 
 #include <algorithm>
+#include <cstdio>
 #include <utility>
 
 namespace pulse {
@@ -86,6 +87,9 @@ private:
         }
 
         if (!originAllowed()) {
+            const std::string origin(request_[http::field::origin]);
+            std::fprintf(stderr, "rejected websocket connection from origin: %s\n",
+                        origin.c_str());
             auto response = std::make_shared<http::response<http::string_body>>(
                 http::status::forbidden, request_.version());
             response->set(http::field::content_type, "text/plain");

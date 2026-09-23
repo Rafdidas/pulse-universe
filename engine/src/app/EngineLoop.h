@@ -36,6 +36,8 @@ public:
     void stop();
 
     // run() 이 예외로 끝났으면 사람이 읽을 이유, 아니면 빈 문자열.
+    // run() 을 도는 스레드만 이 값을 쓴다 — 그 스레드가 돌아왔거나 join 된
+    // 뒤에만 읽어야 한다.
     const std::string& error() const;
 
 private:

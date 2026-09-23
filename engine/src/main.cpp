@@ -41,7 +41,7 @@ int runJson(pulse::ISystemReader& reader, const pulse::Options& options) {
     loop.run();
 
     if (!loop.error().empty()) {
-        std::printf("sampling failed: %s\n", loop.error().c_str());
+        std::fprintf(stderr, "sampling failed: %s\n", loop.error().c_str());
         return 1;
     }
 

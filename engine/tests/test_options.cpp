@@ -188,3 +188,27 @@ TEST_CASE("allow-origin missing its value is rejected", "[options]") {
     REQUIRE(parse({"--serve", "--allow-origin"}, options, error) == ParseResult::Error);
     REQUIRE_FALSE(error.empty());
 }
+
+TEST_CASE("iterations with json is rejected", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--json", "--iterations", "3"}, options, error) == ParseResult::Error);
+    REQUIRE_FALSE(error.empty());
+}
+
+TEST_CASE("iterations before json is rejected regardless of order", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--iterations", "3", "--json"}, options, error) == ParseResult::Error);
+    REQUIRE_FALSE(error.empty());
+}
+
+TEST_CASE("iterations with serve is accepted", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--serve", "--iterations", "3"}, options, error) == ParseResult::Ok);
+    REQUIRE(options.iterations == 3);
+}

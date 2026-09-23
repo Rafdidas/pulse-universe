@@ -15,6 +15,8 @@ struct HelloInfo {
     bool elevated = false;
     std::string os;
     // M2 는 항상 추정이다. ETW 수집기가 들어오면 "measured" 가 된다.
+    // core/Snapshot.h 의 Flow::source 가 도메인 계층에서 같은 값을 나른다 —
+    // 이걸 바꾸면 그쪽도 같이 바꿔야 한다.
     std::string thread_mapping = "estimated";
 };
 

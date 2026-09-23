@@ -77,7 +77,7 @@ TEST_CASE("hello carries the envelope, capabilities and host", "[serialize]") {
     info.interval_ms = 1000;
     info.core_count = 28;
     info.elevated = true;
-    info.os = "Windows 11";
+    info.os = "Windows";
 
     const json::object o = parseObject(serializeHello(info));
 
@@ -86,7 +86,7 @@ TEST_CASE("hello carries the envelope, capabilities and host", "[serialize]") {
     REQUIRE(o.at("interval_ms").to_number<int64_t>() == 1000);
     REQUIRE(o.at("core_count").to_number<int64_t>() == 28);
     REQUIRE(o.at("capabilities").as_object().at("thread_mapping").as_string() == "estimated");
-    REQUIRE(o.at("host").as_object().at("os").as_string() == "Windows 11");
+    REQUIRE(o.at("host").as_object().at("os").as_string() == "Windows");
     REQUIRE(o.at("host").as_object().at("elevated").as_bool());
 }
 
