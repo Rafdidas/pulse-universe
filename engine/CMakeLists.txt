@@ -9,7 +9,7 @@ if(MSVC)
   add_compile_options(/W4 /permissive- /utf-8)
 endif()
 
-find_package(Boost REQUIRED COMPONENTS json)
+find_package(Boost REQUIRED COMPONENTS json beast)
 
 add_library(pulse_core
   src/core/CpuDelta.cpp
@@ -23,11 +23,12 @@ add_library(pulse_core
   src/cli/TableFormatter.cpp
   src/cli/Options.cpp
   src/network/Serializer.cpp
+  src/network/WebSocketServer.cpp
 )
 target_include_directories(pulse_core PUBLIC src)
-target_link_libraries(pulse_core PUBLIC Boost::json)
+target_link_libraries(pulse_core PUBLIC Boost::json Boost::beast)
 if(WIN32)
-  target_link_libraries(pulse_core PUBLIC pdh psapi)
+  target_link_libraries(pulse_core PUBLIC pdh psapi ws2_32 mswsock)
 endif()
 
 add_executable(pulse-engine src/main.cpp)
