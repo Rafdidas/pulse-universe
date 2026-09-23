@@ -170,7 +170,14 @@ private:
         sending_.reset();
 
         if (ec) {
+            // 쓰기가 실패했다. 닫기를 미뤄둔 상태였을 수도 있는데, 여기서
+            // 그냥 돌아가면 async_close 도 소켓 닫기도 일어나지 않는다.
+            // 그러면 남아 있는 async_read 가 끝나리라는 보장이 없고,
+            // io_context 가 비지 않아 종료가 멈춘다. 소켓을 확실히 닫는다.
             open_ = false;
+            closing_ = true;
+            beast::error_code ignored;
+            ws_.next_layer().close(ignored);
             server_.removeSession(shared_from_this());
             return;
         }

@@ -76,6 +76,13 @@ public:
 
     void close() { ws_.close(websocket::close_code::normal); }
 
+    // linger 0 으로 닫으면 FIN 대신 RST 가 나가 서버의 쓰기가 실패한다.
+    void abort() {
+        beast::error_code ignored;
+        ws_.next_layer().set_option(net::socket_base::linger(true, 0), ignored);
+        ws_.next_layer().close(ignored);
+    }
+
     // 서버가 보낸 close 프레임을 받을 때까지 읽는다.
     // 정상 종료면 websocket::error::closed, 소켓만 끊기면 다른 코드가 나온다.
     beast::error_code readUntilClosed() {
@@ -276,4 +283,32 @@ TEST_CASE("the server closes sessions with a websocket close frame", "[ws]") {
     io.join();
 
     REQUIRE(ec == websocket::error::closed);
+}
+
+TEST_CASE("a write failing while a close is pending still drains the io_context", "[ws]") {
+    net::io_context ioc;
+    ServerConfig cfg;
+    cfg.port = 0;
+    WebSocketServer server(ioc, cfg);
+    const unsigned short port = server.port();
+    server.setHello(msg(R"({"type":"hello"})"));
+
+    std::thread io([&] { ioc.run(); });
+
+    {
+        TestClient client(port);
+        REQUIRE(client.read() == R"({"type":"hello"})");
+
+        // 큰 메시지를 여러 번 밀어 넣어 쓰기가 진행 중일 확률을 높인다.
+        const std::string big(64 * 1024, 'x');
+        for (int i = 0; i < 8; ++i) {
+            server.broadcast(msg(big));
+        }
+        client.abort();
+    }
+
+    server.stop();
+    io.join();  // 드레인되지 않으면 여기서 멈춘다
+
+    SUCCEED("io_context drained after the write failed with a close pending");
 }
