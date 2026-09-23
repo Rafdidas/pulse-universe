@@ -60,6 +60,13 @@ export class SystemStream {
     // 재연결 타이머가 이미 걸려 있는데 그대로 connect() 하면 타이머가 나중에
     // 또 붙어 소켓이 둘이 된다. 먼저 취소한다.
     this.cancelTimer();
+
+    // 이미 열려 있거나 연결 중인 소켓이 있으면 버린다. 버리기 전에 현재
+    // 소켓에서 떼어내야 그 핸들러들이 무력해진다 — isCurrent() 가 거짓이 된다.
+    const previous = this.socket;
+    this.socket = null;
+    previous?.close();
+
     this.connect();
   }
 
@@ -79,18 +86,35 @@ export class SystemStream {
     const socket = this.options.createSocket(this.options.url);
     this.socket = socket;
 
+    // 이 소켓이 아직 현재 소켓인지 확인한다. 교체되거나 버려진 소켓의
+    // 이벤트가 뒤늦게 도착해 현재 연결의 상태를 건드리면 안 된다.
+    const isCurrent = () => this.socket === socket;
+
     socket.onopen = () => {
+      if (!isCurrent()) {
+        return;
+      }
       // 한 번이라도 붙었으면 백오프를 처음으로 되돌린다.
       this.backoffMs = BACKOFF_START_MS;
       this.emit({ state: 'open' });
     };
 
-    socket.onmessage = (ev) => this.handleMessage(ev.data);
+    socket.onmessage = (ev) => {
+      if (!isCurrent()) {
+        return;
+      }
+      this.handleMessage(ev.data);
+    };
 
     // 브라우저는 error 뒤에 반드시 close 를 보낸다. 재연결은 close 에서만 건다.
     socket.onerror = () => undefined;
 
-    socket.onclose = (ev) => this.handleClose(ev.code);
+    socket.onclose = (ev) => {
+      if (!isCurrent()) {
+        return;
+      }
+      this.handleClose(ev.code);
+    };
   }
 
   private handleMessage(text: string): void {

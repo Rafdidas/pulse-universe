@@ -333,7 +333,7 @@ describe('SystemStream', () => {
     expect(harness.snapshots).toHaveLength(0);
   });
 
-  it('starts from the base delay again after a stop and restart', () => {
+  it('starts from the base delay after a stop and restart', () => {
     harness.stream.start();
     harness.open();
     harness.closeWith(1006);
@@ -343,9 +343,39 @@ describe('SystemStream', () => {
 
     harness.stream.stop();
     harness.stream.start();
-    harness.open();
+    // 여기서 open() 을 부르지 않는다. onopen 도 백오프를 리셋하므로
+    // 부르면 stop() 쪽 리셋이 검증되지 않는다.
     harness.closeWith(1006);
 
     expect(harness.pendingTimer?.ms).toBe(BACKOFF_START_MS);
+  });
+
+  it('discards an open socket when start is called again', () => {
+    harness.stream.start();
+    harness.open();
+    const first = harness.socket;
+
+    harness.stream.start();
+
+    expect(first.closedWith).not.toBeNull();
+    expect(harness.sockets).toHaveLength(2);
+  });
+
+  it('ignores events from a socket that has been replaced', () => {
+    // 버려진 소켓의 핸들러는 여전히 같은 인스턴스를 가리킨다.
+    // 뒤늦은 이벤트가 현재 연결의 상태를 건드리면 안 된다.
+    harness.stream.start();
+    harness.open();
+    const stale = harness.socket;
+
+    harness.stream.start();
+    harness.open();
+
+    stale.onclose?.({ code: 1006 });
+    stale.onmessage?.({ data: snapshotText(3) });
+
+    expect(harness.timers).toHaveLength(0);
+    expect(harness.snapshots).toHaveLength(0);
+    expect(harness.status.state).toBe('open');
   });
 });
