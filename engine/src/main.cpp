@@ -103,9 +103,16 @@ int runServe(pulse::ISystemReader& reader, const pulse::Options& options) {
 
     std::thread sampler([&] {
         loop.run();
-        // 반복 횟수를 채웠거나 예외로 끝났으면 서버도 접는다.
+
+        // ioc.stop() 을 부르지 않는다. run() 은 남은 작업이 없을 때 돌아오고,
+        // post 된 채 아직 실행되지 않은 핸들러도 작업으로 친다. 따라서 stop()
+        // 이 post 한 세션 정리는 반드시 실행된 뒤에야 run() 이 돌아온다.
+        // io_context 를 살려두는 것은 signal_set 의 대기뿐이므로 그것만 취소한다.
         server->stop();
-        ioc.stop();
+        net::post(ioc, [&] {
+            boost::system::error_code ignored;
+            signals.cancel(ignored);
+        });
     });
 
     ioc.run();

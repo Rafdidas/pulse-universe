@@ -6,6 +6,7 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -215,4 +216,26 @@ TEST_CASE("a second server cannot bind a port already in use", "[ws]") {
 
     first.stop();
     first_ioc.run();
+}
+
+TEST_CASE("run returns only after posted shutdown work has executed", "[ws]") {
+    // runServe 는 이 성질에 기댄다. stop() 은 세션 정리를 post 할 뿐이므로,
+    // run() 이 큐에 남은 핸들러를 건너뛰고 돌아오면 정상 종료가 사라진다.
+    net::io_context ioc;
+    ServerConfig cfg;
+    cfg.port = 0;
+    WebSocketServer server(ioc, cfg);
+
+    std::atomic<bool> ran_after_stop{false};
+    std::thread io([&] { ioc.run(); });
+
+    std::thread stopper([&] {
+        server.stop();
+        net::post(ioc, [&] { ran_after_stop.store(true); });
+    });
+
+    stopper.join();
+    io.join();
+
+    REQUIRE(ran_after_stop.load());
 }

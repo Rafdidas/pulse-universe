@@ -142,6 +142,15 @@ TEST_CASE("a port outside the valid range is rejected", "[options]") {
     REQUIRE(parse({"--serve", "--port", "0"}, options, error) == ParseResult::Error);
     REQUIRE(parse({"--serve", "--port", "70000"}, options, error) == ParseResult::Error);
     REQUIRE(parse({"--serve", "--port", "-1"}, options, error) == ParseResult::Error);
+    REQUIRE(parse({"--serve", "--port", "65536"}, options, error) == ParseResult::Error);
+}
+
+TEST_CASE("the highest valid port is accepted", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--serve", "--port", "65535"}, options, error) == ParseResult::Ok);
+    REQUIRE(options.port == 65535);
 }
 
 TEST_CASE("serve cannot be combined with another mode", "[options]") {
