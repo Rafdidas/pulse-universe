@@ -16,6 +16,7 @@ public:
 
     RawSample read() override;
     unsigned coreCount() const override;
+    HostInfo hostInfo() const override;
 
 private:
     void* query_ = nullptr;    // PDH_HQUERY

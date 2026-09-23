@@ -1,46 +1,50 @@
-#include <chrono>
 #include <cstdio>
 #include <string>
-#include <thread>
 
+#include "app/EngineLoop.h"
 #include "cli/Options.h"
 #include "cli/TableFormatter.h"
-#include "core/DataAggregator.h"
 #include "network/Serializer.h"
 #include "platform/windows/WindowsSystemReader.h"
 
 namespace {
 
-int runDump(pulse::WindowsSystemReader& reader, const pulse::Options& options) {
-    pulse::AggregatorConfig config;
-    config.filter.max_groups = options.max_groups;
-    pulse::DataAggregator aggregator(reader.coreCount(), config);
+int runDump(pulse::ISystemReader& reader, const pulse::Options& options) {
+    pulse::EngineLoopConfig cfg;
+    cfg.interval_ms = options.interval_ms;
+    cfg.iterations = options.iterations;
+    cfg.aggregator.filter.max_groups = options.max_groups;
 
-    for (unsigned n = 0; options.iterations == 0 || n < options.iterations; ++n) {
-        const pulse::SystemSnapshot snapshot = aggregator.aggregate(reader.read());
-
+    pulse::EngineLoop loop(reader, cfg, [](const pulse::SystemSnapshot& snapshot) {
         std::printf("%s\n", pulse::formatSnapshotTable(snapshot).c_str());
         std::fflush(stdout);
+    });
+    loop.run();
 
-        const bool is_last = options.iterations != 0 && n + 1 == options.iterations;
-        if (!is_last) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(options.interval_ms));
-        }
+    if (!loop.error().empty()) {
+        std::printf("sampling failed: %s\n", loop.error().c_str());
+        return 1;
     }
     return 0;
 }
 
-int runJson(pulse::WindowsSystemReader& reader, const pulse::Options& options) {
-    pulse::AggregatorConfig config;
-    config.filter.max_groups = options.max_groups;
-    pulse::DataAggregator aggregator(reader.coreCount(), config);
+int runJson(pulse::ISystemReader& reader, const pulse::Options& options) {
+    pulse::EngineLoopConfig cfg;
+    cfg.interval_ms = options.interval_ms;
+    cfg.iterations = 2;  // 첫 스냅샷은 CPU 델타가 없어 버린다 — 계약서 6.1 절
+    cfg.aggregator.filter.max_groups = options.max_groups;
 
-    // 첫 표본은 CPU 델타가 없어 모든 cpu_pct 가 null 이다. 버린다.
-    aggregator.aggregate(reader.read());
-    std::this_thread::sleep_for(std::chrono::milliseconds(options.interval_ms));
+    pulse::SystemSnapshot latest;
+    pulse::EngineLoop loop(reader, cfg,
+                           [&](const pulse::SystemSnapshot& s) { latest = s; });
+    loop.run();
 
-    const pulse::SystemSnapshot snapshot = aggregator.aggregate(reader.read());
-    std::printf("%s\n", pulse::serializeSnapshot(snapshot).c_str());
+    if (!loop.error().empty()) {
+        std::printf("sampling failed: %s\n", loop.error().c_str());
+        return 1;
+    }
+
+    std::printf("%s\n", pulse::serializeSnapshot(latest).c_str());
     return 0;
 }
 

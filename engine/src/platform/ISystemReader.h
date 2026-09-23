@@ -10,6 +10,8 @@ public:
     virtual ~ISystemReader() = default;
     virtual RawSample read() = 0;
     virtual unsigned coreCount() const = 0;
+    // hello 메시지의 host 블록을 채우는 데 쓴다 — 계약서 4.3 절.
+    virtual HostInfo hostInfo() const = 0;
 };
 
 }  // namespace pulse

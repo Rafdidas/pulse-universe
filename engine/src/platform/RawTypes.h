@@ -30,6 +30,11 @@ struct RawMemory {
     uint64_t total_bytes = 0;
 };
 
+struct HostInfo {
+    std::string os;
+    bool elevated = false;
+};
+
 struct RawSample {
     std::vector<RawProcess> processes;
     std::vector<RawCore> cores;

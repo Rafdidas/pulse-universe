@@ -12,7 +12,9 @@ add_executable(pulse-tests
   test_table_formatter.cpp
   test_options.cpp
   test_serializer.cpp
+  test_engine_loop.cpp
 )
 target_link_libraries(pulse-tests PRIVATE Catch2::Catch2WithMain pulse_core)
+target_include_directories(pulse-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_test(NAME pulse-tests COMMAND pulse-tests)

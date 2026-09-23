@@ -18,6 +18,7 @@ add_library(pulse_core
   src/core/LifecycleTracker.cpp
   src/core/FlowEstimator.cpp
   src/core/DataAggregator.cpp
+  src/app/EngineLoop.cpp
   src/platform/windows/WindowsSystemReader.cpp
   src/cli/TableFormatter.cpp
   src/cli/Options.cpp

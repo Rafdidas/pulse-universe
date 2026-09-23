@@ -95,6 +95,23 @@ void enableDebugPrivilege() {
     ::CloseHandle(token);
 }
 
+// 현재 프로세스가 승격된 토큰으로 도는지 조회한다.
+// 계약서 4.3 절의 host.elevated 를 채우고, 프론트엔드가
+// 비권한 실행 시 일부 프로세스의 메모리가 0 인 이유를 안내할 수 있게 한다.
+bool isProcessElevated() {
+    HANDLE token = nullptr;
+    if (::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &token) == 0) {
+        return false;
+    }
+
+    TOKEN_ELEVATION elevation{};
+    DWORD returned = 0;
+    const bool ok = ::GetTokenInformation(token, TokenElevation, &elevation,
+                                          sizeof(elevation), &returned) != 0;
+    ::CloseHandle(token);
+    return ok && elevation.TokenIsElevated != 0;
+}
+
 // 핸들에서 시각/경로를 읽는다. 메모리는 전체 접근 경로에서만 읽는다 -
 // PROCESS_VM_READ 없이 GetProcessMemoryInfo 를 부르면 실패하기 때문이다.
 void readTimesAndPath(HANDLE handle, RawProcess& process) {
@@ -191,6 +208,13 @@ WindowsSystemReader::~WindowsSystemReader() {
 
 unsigned WindowsSystemReader::coreCount() const {
     return core_count_;
+}
+
+HostInfo WindowsSystemReader::hostInfo() const {
+    HostInfo info;
+    info.os = "Windows";
+    info.elevated = isProcessElevated();
+    return info;
 }
 
 RawSample WindowsSystemReader::read() {
