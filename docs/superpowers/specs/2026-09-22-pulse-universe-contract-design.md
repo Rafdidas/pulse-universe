@@ -105,7 +105,9 @@ VITE_PULSE_WS_URL 가 정의되어 있으면  → 그 값을 사용   (개발: V
 }
 ```
 
-`capabilities.thread_mapping` 이 나중에 `"measured"` 로 바뀌는 것이 ETW 확장의 유일한 계약 변경 지점이다.
+`capabilities.thread_mapping` 은 ETW 확장이 들어오면 `"measured"` 로 바뀐다.
+
+**정정 (M2 구현 후).** 이 문단은 원래 이 필드가 "ETW 확장의 유일한 계약 변경 지점" 이라고 적었다. 사실이 아니다. `flows[].source`(4.4절) 도 함께 `"measured"` 가 되어야 하며, 두 값은 항상 일치해야 한다 — 하나는 연결 시점의 능력 선언이고 다른 하나는 개별 흐름의 출처 표시다. 구현에서도 두 기본값이 서로 다른 파일에 있으므로(`core/Snapshot.h` 와 `network/Serializer.h`), 한쪽만 바꾸면 조용히 어긋난다. 두 파일에 서로를 가리키는 주석을 달아두었다.
 
 ### 4.4 메시지: snapshot
 
