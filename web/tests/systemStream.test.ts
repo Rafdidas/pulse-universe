@@ -237,9 +237,15 @@ describe('SystemStream', () => {
   it('applies jitter below the full delay', () => {
     // random() 이 0 이면 지연이 절반이 된다. 여러 클라이언트가 동시에
     // 재접속을 시도하는 것을 흩뜨리기 위한 것이다.
+    let scheduled = 0;
+    let socket!: FakeSocket;
+
     const jittered = new SystemStream({
       url: 'ws://test',
-      createSocket: () => new FakeSocket(),
+      createSocket: () => {
+        socket = new FakeSocket();
+        return socket;
+      },
       setTimer: (_fn, ms) => {
         scheduled = ms;
         return 1;
@@ -249,10 +255,9 @@ describe('SystemStream', () => {
       onStatus: () => undefined,
       random: () => 0,
     });
-    let scheduled = 0;
 
     jittered.start();
-    jittered.handleCloseForTest(1006);
+    socket.onclose?.({ code: 1006 });
 
     expect(scheduled).toBe(BACKOFF_START_MS / 2);
   });
@@ -292,5 +297,55 @@ describe('SystemStream', () => {
 
     expect(harness.timers).toHaveLength(0);
     expect(harness.sockets).toHaveLength(1);
+  });
+
+  it('does not open a second socket when start is called with a retry pending', () => {
+    harness.stream.start();
+    harness.open();
+    harness.closeWith(1006);
+    expect(harness.timers).toHaveLength(1);
+
+    harness.stream.start();
+
+    expect(harness.timers).toHaveLength(0);
+    expect(harness.sockets).toHaveLength(2);
+  });
+
+  it('ignores a message arriving on the old socket after a version mismatch', () => {
+    harness.stream.start();
+    harness.open();
+    const stale = harness.socket;
+    harness.deliver(JSON.stringify({ type: 'snapshot', v: 2 }));
+
+    stale.onmessage?.({ data: snapshotText(9) });
+
+    expect(harness.snapshots).toHaveLength(0);
+  });
+
+  it('ignores a message arriving after stop', () => {
+    harness.stream.start();
+    harness.open();
+    const stale = harness.socket;
+    harness.stream.stop();
+
+    stale.onmessage?.({ data: snapshotText(9) });
+
+    expect(harness.snapshots).toHaveLength(0);
+  });
+
+  it('starts from the base delay again after a stop and restart', () => {
+    harness.stream.start();
+    harness.open();
+    harness.closeWith(1006);
+    harness.fireTimer();
+    harness.closeWith(1006);
+    expect(harness.pendingTimer?.ms).toBe(BACKOFF_START_MS * 2);
+
+    harness.stream.stop();
+    harness.stream.start();
+    harness.open();
+    harness.closeWith(1006);
+
+    expect(harness.pendingTimer?.ms).toBe(BACKOFF_START_MS);
   });
 });

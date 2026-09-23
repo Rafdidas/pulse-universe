@@ -57,21 +57,20 @@ export class SystemStream {
 
   start(): void {
     this.stopped = false;
+    // 재연결 타이머가 이미 걸려 있는데 그대로 connect() 하면 타이머가 나중에
+    // 또 붙어 소켓이 둘이 된다. 먼저 취소한다.
+    this.cancelTimer();
     this.connect();
   }
 
   stop(): void {
     this.stopped = true;
+    this.backoffMs = BACKOFF_START_MS;
     this.cancelTimer();
 
     const socket = this.socket;
     this.socket = null;
     socket?.close();
-  }
-
-  // 테스트가 close 경로를 직접 두드리기 위한 통로.
-  handleCloseForTest(code: number): void {
-    this.handleClose(code);
   }
 
   private connect(): void {
@@ -95,6 +94,12 @@ export class SystemStream {
   }
 
   private handleMessage(text: string): void {
+    // 닫기 직전에 큐에 들어가 있던 메시지가 뒤늦게 도착할 수 있다.
+    // 이미 끝난 스트림이면 소비자에게 흘리지 않는다.
+    if (this.stopped || this.status.state === 'version-mismatch') {
+      return;
+    }
+
     const outcome = parseMessage(text);
 
     if (outcome.kind === 'version-mismatch') {
