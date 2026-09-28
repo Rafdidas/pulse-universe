@@ -117,6 +117,7 @@ public:
         : delays_ms_(std::move(delays_ms)) {}
 
     RawSample read() override {
+        starts_.push_back(std::chrono::steady_clock::now());
         const std::size_t index = std::min(next_++, delays_ms_.size() - 1);
         std::this_thread::sleep_for(std::chrono::milliseconds(delays_ms_[index]));
         return makeSample(1000 * (next_ + 1));
@@ -126,9 +127,13 @@ public:
 
     HostInfo hostInfo() const override { return HostInfo{"FakeOS", false}; }
 
+    // read() 가 불린 시각. 루프가 보장하는 것은 샘플을 "시작하는" 간격이다.
+    const std::vector<std::chrono::steady_clock::time_point>& starts() const { return starts_; }
+
 private:
     std::vector<unsigned> delays_ms_;
     std::size_t next_ = 0;
+    std::vector<std::chrono::steady_clock::time_point> starts_;
 };
 
 using Clock = std::chrono::steady_clock;
@@ -153,20 +158,26 @@ std::vector<double> gapsBetweenCalls(ISystemReader& reader, unsigned interval_ms
 
 }  // namespace
 
-// 타이밍 테스트다. Windows 의 기본 타이머 해상도(약 15.6 ms)를 견디도록 경계를
-// 넉넉하게 잡되, 옛 동작(샘플링 시간 + 주기)과는 확실히 갈리게 했다.
+// 루프가 보장하는 것은 샘플을 "시작하는" 간격이다. 핸들러 호출 시각은 샘플링이
+// 끝난 뒤라 read() 소요 시간의 흔들림(sleep_for 30 ms 가 Windows 타이머 해상도
+// 때문에 30~46 ms)이 섞인다 — 첫 샘플이 길고 마지막이 짧으면 합이 200 ms 아래로
+// 내려간다(부하 중 실측 189.8 ms). 그래서 read() 가 불린 시각을 잰다. 시작은 마감
+// 시각보다 빠를 수 없으므로 4 주기의 합은 200 ms 이상이다.
 TEST_CASE("the loop starts samples on a fixed period regardless of how long sampling takes",
           "[loop][timing]") {
-    // 샘플 30 ms, 주기 50 ms. 옛 동작이면 호출 간격이 80 ms 이상이다.
     SlowSystemReader reader({30});
-    const auto gaps = gapsBetweenCalls(reader, 50, 5);
+    EngineLoopConfig cfg;
+    cfg.interval_ms = 50;
+    cfg.iterations = 5;
+    EngineLoop loop(reader, cfg, [](const SystemSnapshot&) {});
+    loop.run();
 
-    REQUIRE(gaps.size() == 4);
-    double total = 0.0;
-    for (const double gap : gaps) {
-        total += gap;
-    }
-    REQUIRE(total >= 190.0);
+    const auto& starts = reader.starts();
+    REQUIRE(starts.size() == 5);
+    const double total =
+        std::chrono::duration<double, std::milli>(starts.back() - starts.front()).count();
+    // 옛 동작(샘플링 뒤 주기만큼 쉼)이면 시작 간격이 30 + 50 = 80 ms 이상, 합이 320 ms 이상이다.
+    REQUIRE(total >= 195.0);
     REQUIRE(total < 280.0);
 }
 
