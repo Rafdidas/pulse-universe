@@ -21,19 +21,35 @@ import {
   pulseFor,
   radiusFor,
 } from '../visual/mapping';
-import { useSceneContext } from './sceneContext';
+import { presenceVisual } from '../visual/presence';
+import { useFocusStore } from './focusStore';
+import { useSceneContext, type FocusFrame } from './sceneContext';
 
 const SALT_PHASE = 2;
+// 초점이 잡히면 다른 천체의 발광·불투명도가 이만큼까지 줄어든다 (M5 스펙 9.3).
+const DIM_DEPTH = 0.75;
+// 드래그 끝에 버튼을 뗀 것은 클릭이 아니다 (px).
+const CLICK_SLOP = 2;
+
+// 초점과 무관한 천체일수록 1 보다 작다.
+function dimFor(focus: FocusFrame, key: string): number {
+  const center = focus.key ?? focus.previousKey;
+  if (center === null || center === key) {
+    return 1;
+  }
+  return 1 - DIM_DEPTH * focus.weight;
+}
 
 interface Props {
   nodeKey: string;
   account: ProcessGroup['account'];
 }
 
-// 그룹 하나. 프레임 값은 React 상태를 거치지 않는다 — useFrame 에서
-// FrameCache 를 key 로 읽어 ref 를 직접 바꾼다 (스펙 4절).
+// 그룹 하나. 프레임 값은 React 상태를 거치지 않는다 — useFrame 에서 존재
+// 추적기의 항목을 key 로 읽어 ref 를 직접 바꾼다. 떠나는 중인 천체는 고정된
+// 마지막 값으로 그린다.
 export function ProcessNode({ nodeKey, account }: Props) {
-  const { cache, layout, setHovered } = useSceneContext();
+  const { cache, layout, presence, focus, setHovered } = useSceneContext();
 
   const root = useRef<Group>(null);
   const body = useRef<Mesh>(null);
@@ -58,28 +74,41 @@ export function ProcessNode({ nodeKey, account }: Props) {
     ) {
       return;
     }
-    const group = cache.byKey.get(nodeKey);
+    const entry = presence.get(nodeKey);
     const position =
       cache.timeSec === null ? undefined : floatingPosition(layout, nodeKey, cache.timeSec);
-    // 첫 프레임 전이나 그룹이 막 사라진 프레임에는 원점에 크기 1 로 뜨지 않게 숨긴다.
-    if (group === undefined || position === undefined) {
+    if (entry === undefined || position === undefined) {
       root.current.visible = false;
       return;
     }
     root.current.visible = true;
 
+    const group = entry.value;
+    const visual = presenceVisual(entry);
+    const dim = dimFor(focus, nodeKey);
     const activity = activityFor(group.cpu_pct, cache.coreCount);
     const pulse = pulseFor(activity);
     phase.current = advancePhase(phase.current, pulse.freqHz, cache.dtSec);
-    const scale = radiusFor(group.mem_mb) * (1 + pulse.amplitude * Math.sin(phase.current));
+    const scale =
+      radiusFor(group.mem_mb) * visual.scale * (1 + pulse.amplitude * Math.sin(phase.current));
 
     root.current.position.set(position.x, position.y, position.z);
     body.current.scale.setScalar(scale);
     halo.current.scale.setScalar(scale * HALO_SCALE);
 
     const glow = glowFor(activity);
-    bodyMaterial.current.emissiveIntensity = glow.emissiveIntensity;
-    haloMaterial.current.opacity = glow.haloOpacity;
+    const opacity = visual.opacity * dim;
+    const material = bodyMaterial.current;
+    material.emissiveIntensity = glow.emissiveIntensity * dim;
+    material.opacity = opacity;
+    // 불투명할 때는 transparent 를 끈다. 정렬 비용과 깊이 문제를 피한다.
+    const transparent = opacity < 1;
+    if (material.transparent !== transparent) {
+      material.transparent = transparent;
+      material.depthWrite = !transparent;
+      material.needsUpdate = true;
+    }
+    haloMaterial.current.opacity = glow.haloOpacity * opacity;
   });
 
   return (
@@ -88,9 +117,26 @@ export function ProcessNode({ nodeKey, account }: Props) {
         ref={body}
         onPointerOver={(event) => {
           event.stopPropagation();
-          setHovered(() => nodeKey);
+          setHovered(() => ({ kind: 'group', key: nodeKey }));
         }}
-        onPointerOut={() => setHovered((current) => (current === nodeKey ? null : current))}
+        onPointerOut={() =>
+          setHovered((current) =>
+            current?.kind === 'group' && current.key === nodeKey ? null : current,
+          )
+        }
+        onClick={(event) => {
+          // R3F 는 드래그 끝에도 onClick 을 부른다. 궤도 조작을 초점 전환으로
+          // 읽지 않도록 움직인 거리를 본다.
+          if (event.delta > CLICK_SLOP) {
+            return;
+          }
+          event.stopPropagation();
+          const phase = presence.get(nodeKey)?.phase;
+          if (phase === 'fading-out' || phase === 'collapsing') {
+            return;
+          }
+          useFocusStore.getState().toggle(nodeKey);
+        }}
       >
         <sphereGeometry args={[1, 32, 32]} />
         <meshStandardMaterial

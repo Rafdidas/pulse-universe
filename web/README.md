@@ -14,8 +14,8 @@ stream/useSystemStream.ts stream/ 을 React 에 연결하는 유일한 다리, �
 state/snapshotStore.ts    Zustand: previous, current, arrivedAt, intervalMs, status, lifecycleLog
 state/interpolator.ts     sample(input, now) — 순수 함수, React 도 Zustand 도 모른다
 state/useInterpolated.ts  대시보드를 위해 100ms 마다 sample() 을 호출한다
-visual/                   순수 TS: 크기·맥박·발광·색 매핑, 배치 시뮬레이션, 프레임 캐시
-scene/                    R3F: 프레임당 sample() 한 번 → FrameCache → 노드가 key 로 읽는다
+visual/                   순수 TS: 매핑, 배치, 프레임 캐시, 존재 추적, lifecycle 소비, 버스트·궤도·카메라 계산
+scene/                    R3F: 프레임당 sample() 한 번 → 존재 추적기 → 노드·위성·입자가 key 로 읽는다
 dashboard/                React 컴포넌트; state/ 만 읽는다
 shell/                    URL 해시로 우주와 대시보드 중 하나만 마운트한다
 main.tsx                  스트림을 시작하는 루트 래퍼, Shell 을 렌더링한다
@@ -26,6 +26,8 @@ main.tsx                  스트림을 시작하는 루트 래퍼, Shell 을 렌
 순수 모듈이다. 이 경계들은 `.oxlintrc.json` 의 `no-restricted-imports` 규칙으로
 강제된다. 장면의 프레임 값(보간된 CPU·메모리, 위치, 맥박)은 React 상태를 거치지
 않고 `useFrame` 안에서 ref 로 바뀐다.
+
+천체를 클릭하면 카메라가 다가가고 자식 프로세스가 위성으로 펼쳐진다. `Esc` 나 빈 곳 클릭으로 돌아온다. GSAP 은 이 전환의 진행도 하나만 움직이고, 형성·페이드·붕괴는 `visual/presence.ts` 가 시각으로 계산한다.
 
 두 가지 규칙은 어디서나 지킨다: `cpu_pct` 값은 `number | null` 이고 **`null`
 (모름)은 절대 `0`(측정된 0)으로 뭉개지지 않는다**. 그리고 프런트엔드는 엔진에

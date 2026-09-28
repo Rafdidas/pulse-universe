@@ -4,24 +4,64 @@ import { useRef } from 'react';
 import type { Group } from 'three';
 
 import { formatMb, formatPct } from '../dashboard/format';
-import { floatingPosition } from '../visual/layout';
+import { floatingPosition, type Vec3 } from '../visual/layout';
 import { radiusFor } from '../visual/mapping';
-import { useSceneContext } from './sceneContext';
+import { FRAME_PRIORITY } from './framePriority';
+import { useSceneContext, type Hovered, type SceneContextValue } from './sceneContext';
 
-interface Props {
-  nodeKey: string;
+interface Label {
+  position: Vec3;
+  radius: number;
+  title: string;
+  detail: string;
 }
 
-// SceneRoot 의 useFrame(-1) 뒤, drei Html 의 useFrame(0, anchor 를 투영) 보다
-// 먼저 돌아야 한다. 같은 프레임 안에서 Tooltip 이 anchor 위치를 옮긴 다음
-// Html 이 그 위치를 읽어야 한 프레임 지연이나 원점 깜빡임이 없다.
-const BEFORE_HTML_PROJECTION = -0.5;
-
-// 호버한 천체 위에 이름·메모리·CPU 를 띄운다. 값은 1 Hz 가 아니라 보간된
-// 프레임 값이므로 React 상태를 거치지 않고 DOM 을 직접 바꾼다.
 // 숫자는 대시보드와 같은 formatMb·formatPct 로 쓴다 — 두 화면이 일치해야 한다.
-export function Tooltip({ nodeKey }: Props) {
-  const { cache, layout } = useSceneContext();
+function labelFor(target: NonNullable<Hovered>, context: SceneContextValue): Label | null {
+  const { cache, layout, presence, satellites } = context;
+  if (target.kind === 'satellite') {
+    const view = satellites.get(target.pid);
+    if (view === undefined) {
+      return null;
+    }
+    return {
+      position: view.position,
+      radius: view.radius,
+      title: `${view.child.name} · pid ${view.child.pid}`,
+      detail: `${formatMb(view.child.mem_mb)} MB · CPU ${formatPct(view.child.cpu_pct)}%`,
+    };
+  }
+  const entry = presence.get(target.key);
+  const position =
+    cache.timeSec === null ? undefined : floatingPosition(layout, target.key, cache.timeSec);
+  // 떠나는 중인 천체의 값은 고정된 옛 값이다. 보여 주지 않는다.
+  if (
+    entry === undefined ||
+    position === undefined ||
+    entry.phase === 'fading-out' ||
+    entry.phase === 'collapsing'
+  ) {
+    return null;
+  }
+  const group = entry.value;
+  return {
+    position,
+    radius: radiusFor(group.mem_mb),
+    title: group.name,
+    detail: `${formatMb(group.mem_mb)} MB · CPU ${formatPct(group.cpu_pct)}%`,
+  };
+}
+
+interface Props {
+  target: NonNullable<Hovered>;
+}
+
+// 호버한 천체나 위성 위에 이름·메모리·CPU 를 띄운다. 값은 보간된 프레임
+// 값이므로 React 상태를 거치지 않고 DOM 을 직접 바꾼다.
+// anchor 를 옮기는 이 useFrame 은 drei Html 의 투영(우선순위 0)보다 먼저
+// 돌아야 한 프레임 지연이나 원점 깜빡임이 없다 (framePriority 참조).
+export function Tooltip({ target }: Props) {
+  const context = useSceneContext();
   const anchor = useRef<Group>(null);
   const box = useRef<HTMLDivElement>(null);
   const name = useRef<HTMLDivElement>(null);
@@ -36,19 +76,21 @@ export function Tooltip({ nodeKey }: Props) {
     ) {
       return;
     }
-    const group = cache.byKey.get(nodeKey);
-    const position =
-      cache.timeSec === null ? undefined : floatingPosition(layout, nodeKey, cache.timeSec);
+    const label = labelFor(target, context);
     // Html 은 DOM 이라 group.visible 로는 숨겨지지 않는다. DOM 쪽을 직접 숨긴다.
-    if (group === undefined || position === undefined) {
+    if (label === null) {
       box.current.style.display = 'none';
       return;
     }
     box.current.style.display = '';
-    anchor.current.position.set(position.x, position.y + radiusFor(group.mem_mb) * 1.2, position.z);
-    name.current.textContent = group.name;
-    detail.current.textContent = `${formatMb(group.mem_mb)} MB · CPU ${formatPct(group.cpu_pct)}%`;
-  }, BEFORE_HTML_PROJECTION);
+    anchor.current.position.set(
+      label.position.x,
+      label.position.y + label.radius * 1.2,
+      label.position.z,
+    );
+    name.current.textContent = label.title;
+    detail.current.textContent = label.detail;
+  }, FRAME_PRIORITY.tooltip);
 
   return (
     <group ref={anchor}>

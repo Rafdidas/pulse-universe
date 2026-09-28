@@ -57,3 +57,69 @@
 .shell-toggle:hover {
   border-color: #6ee7a8;
 }
+
+.focus-panel {
+  position: fixed;
+  top: 64px;
+  right: 12px;
+  width: 340px;
+  max-height: calc(100vh - 88px);
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: rgba(20, 24, 29, 0.9);
+  border: 1px solid #2a313a;
+  border-radius: 4px;
+}
+
+.focus-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  color: #e8edf3;
+}
+
+.focus-panel header button {
+  font: inherit;
+  color: #d7dde5;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.focus-panel dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  margin: 0 0 8px;
+}
+
+.focus-panel dt {
+  color: #8f9aa8;
+}
+
+.focus-panel dd {
+  margin: 0;
+}
+
+.focus-panel-path {
+  margin: 0 0 8px;
+  color: #8f9aa8;
+  word-break: break-all;
+}
+
+.focus-panel table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.focus-panel th,
+.focus-panel td {
+  padding: 2px 4px;
+  text-align: right;
+}
+
+.focus-panel th:first-child,
+.focus-panel td:first-child {
+  text-align: left;
+}

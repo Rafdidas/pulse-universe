@@ -1,50 +1,22 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ProcessGroup, Snapshot } from '../src/protocol/schema';
-import { parseNodeId, selectNodeIds } from '../src/scene/nodeList';
+import type { ProcessGroup } from '../src/protocol/schema';
+import { nodeIdsOf, parseNodeId } from '../src/scene/nodeList';
 
-function group(key: string, account: ProcessGroup['account']): ProcessGroup {
-  return {
-    key,
-    name: key.split(':')[0],
-    root_pid: 1,
-    cpu_pct: 0,
-    mem_mb: 100,
-    proc_count: 1,
-    thread_count: 1,
-    started_at: 0,
-    account,
-    image_path: '',
-    children: [],
-  };
+function entry(key: string, account: ProcessGroup['account']) {
+  return { key, value: { account } };
 }
 
-function snapshot(groups: ProcessGroup[]): Snapshot {
-  return {
-    type: 'snapshot',
-    v: 1,
-    seq: 1,
-    t: 0,
-    system: { cpu_pct: 0, mem_used_mb: 0, mem_total_mb: 0, process_total: 0, thread_total: 0 },
-    cores: [],
-    groups,
-    flows: [],
-    lifecycle: { spawned: [], terminated: [] },
-    ambient: { service_proc_count: 0, service_mem_mb: 0 },
-  };
-}
-
-describe('selectNodeIds', () => {
-  it('returns one id per group in snapshot order', () => {
-    const ids = selectNodeIds({
-      current: snapshot([group('a.exe:1', 'user'), group('b.exe:2', 'system')]),
-    });
-    expect(ids).toEqual(['user|a.exe:1', 'system|b.exe:2']);
+describe('nodeIdsOf', () => {
+  it('returns one id per entry in order', () => {
+    expect(nodeIdsOf([entry('a.exe:1', 'user'), entry('b.exe:2', 'system')])).toEqual([
+      'user|a.exe:1',
+      'system|b.exe:2',
+    ]);
   });
 
-  it('returns the same empty array every time there is no snapshot', () => {
-    expect(selectNodeIds({ current: null })).toBe(selectNodeIds({ current: null }));
-    expect(selectNodeIds({ current: null })).toEqual([]);
+  it('returns an empty list for no entries', () => {
+    expect(nodeIdsOf([])).toEqual([]);
   });
 });
 
@@ -58,9 +30,10 @@ describe('parseNodeId', () => {
     expect(parseNodeId('user|odd|name.exe:7')).toEqual({ account: 'user', key: 'odd|name.exe:7' });
   });
 
-  it('round-trips every id selectNodeIds produces', () => {
-    const groups = [group('a.exe:1', 'user'), group('b b.exe:2', 'system')];
-    const parsed = selectNodeIds({ current: snapshot(groups) }).map(parseNodeId);
-    expect(parsed).toEqual(groups.map((g) => ({ key: g.key, account: g.account })));
+  it('round-trips every id nodeIdsOf produces', () => {
+    const entries = [entry('a.exe:1', 'user'), entry('b b.exe:2', 'system')];
+    expect(nodeIdsOf(entries).map(parseNodeId)).toEqual(
+      entries.map((e) => ({ key: e.key, account: e.value.account })),
+    );
   });
 });
