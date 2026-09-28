@@ -101,9 +101,16 @@ VITE_PULSE_WS_URL 가 정의되어 있으면  → 그 값을 사용   (개발: V
   "interval_ms": 1000,
   "core_count": 16,
   "capabilities": { "thread_mapping": "estimated" },
-  "host": { "os": "Windows 11", "elevated": true }
+  "host": { "os": "Windows", "elevated": true },
+  "session": "31dbc19e0b0a6786"
 }
 ```
+
+`session` 은 엔진 프로세스 한 번의 실행을 식별하는 16자리 소문자 16진수다. 엔진이 뜰 때마다 새로 정해지고, 그 실행이 끝날 때까지 모든 연결의 `hello` 에 같은 값이 실린다.
+
+**추가 경위 (M3).** 엔진은 새 연결마다 보관 중인 최신 스냅샷을 곧바로 다시 보내고, 재시작하면 `seq` 가 1부터 다시 시작한다. 그래서 클라이언트는 `seq` 만으로 "엔진이 재시작됐다"와 "같은 엔진에 늦게 재연결해 프레임을 놓쳤다"를 **원리적으로 구분할 수 없다** — 옛 엔진이 5초, 새 엔진이 8초 돈 뒤에 재연결하면 새 엔진의 `seq` 8 이 같은 세션의 다음 프레임처럼 보인다. 클라이언트는 `session` 이 바뀌면 이전 세션의 데이터를 비운다. 이 필드는 공개 전에 추가됐으므로 프로토콜 버전은 `1` 로 유지한다.
+
+`host.os` 는 현재 구현에서 `"Windows"` 다. 버전 판별은 하지 않는다.
 
 `capabilities.thread_mapping` 은 ETW 확장이 들어오면 `"measured"` 로 바뀐다.
 
