@@ -25,6 +25,9 @@ export const SETTLE_STEPS = 600;
 
 // 아래 상수들은 실제 픽스처 40 개로 돌려 정했다 (스펙 6절).
 export const SPAWN_RADIUS = 18;
+// 사전 수렴이 끝난 뒤 들어오는 key 는 무리의 가장 먼 노드보다 이만큼 바깥에
+// 놓는다. 무리 안쪽에서 생기면 형성 연출이 다른 천체에 가려진다 (M5 스펙 8절).
+export const OUTSIDE_MARGIN = 4;
 export const COLLISION_GAP = 1.0;
 export const COLLISION_STIFFNESS = 8;
 export const REPULSION = 3;
@@ -41,16 +44,20 @@ interface Body {
   velocity: Vec3;
 }
 
-// key 해시로 반지름 SPAWN_RADIUS 인 구 안의 한 점을 고른다.
-function spawnPosition(key: string): Vec3 {
+// key 해시로 정한 단위 방향에 거리 r 을 곱한 점.
+function hashedPoint(key: string, r: number): Vec3 {
   const theta = 2 * Math.PI * hash01(key, SALT_X);
   const phi = Math.acos(2 * hash01(key, SALT_Y) - 1);
-  const r = SPAWN_RADIUS * Math.cbrt(hash01(key, SALT_Z));
   return {
     x: r * Math.sin(phi) * Math.cos(theta),
     y: r * Math.cos(phi),
     z: r * Math.sin(phi) * Math.sin(theta),
   };
+}
+
+// key 해시로 반지름 SPAWN_RADIUS 인 구 안의 한 점을 고른다.
+function spawnPosition(key: string): Vec3 {
+  return hashedPoint(key, SPAWN_RADIUS * Math.cbrt(hash01(key, SALT_Z)));
 }
 
 export class LayoutSim {
@@ -67,7 +74,7 @@ export class LayoutSim {
 
   step(nodes: readonly LayoutNode[], dtSec: number): void {
     const wasEmpty = this.bodies.size === 0;
-    this.sync(nodes);
+    this.sync(nodes, wasEmpty);
     if (nodes.length === 0) {
       return;
     }
@@ -89,13 +96,22 @@ export class LayoutSim {
     }
   }
 
-  private sync(nodes: readonly LayoutNode[]): void {
+  private sync(nodes: readonly LayoutNode[], wasEmpty: boolean): void {
+    // 이미 자리 잡은 무리가 있으면 새 key 는 그 바깥에 놓는다.
+    let outside = 0;
+    if (!wasEmpty) {
+      for (const body of this.bodies.values()) {
+        outside = Math.max(outside, Math.hypot(body.position.x, body.position.y, body.position.z));
+      }
+      outside += OUTSIDE_MARGIN;
+    }
+
     const present = new Set<string>();
     for (const node of nodes) {
       present.add(node.key);
       if (!this.bodies.has(node.key)) {
         this.bodies.set(node.key, {
-          position: spawnPosition(node.key),
+          position: wasEmpty ? spawnPosition(node.key) : hashedPoint(node.key, outside),
           velocity: { x: 0, y: 0, z: 0 },
         });
       }

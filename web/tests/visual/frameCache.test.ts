@@ -93,9 +93,7 @@ describe('frameCache', () => {
   });
 
   it('turns groups into layout nodes with their radius', () => {
-    const cache = createFrameCache();
-    updateFrameCache(cache, frame, 1000);
-    const nodes = layoutNodesFrom(cache);
+    const nodes = layoutNodesFrom(frame.groups);
 
     expect(nodes).toHaveLength(fixture.groups.length);
     expect(nodes[0]).toEqual({

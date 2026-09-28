@@ -40,7 +40,7 @@ export function SceneRoot() {
       now,
     );
     updateFrameCache(context.cache, frame, now);
-    context.layout.step(layoutNodesFrom(context.cache), context.cache.dtSec);
+    context.layout.step(layoutNodesFrom(context.cache.byKey.values()), context.cache.dtSec);
   }, BEFORE_NODES);
 
   const keys = ids.map((id) => parseNodeId(id).key);

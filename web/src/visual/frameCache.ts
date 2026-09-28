@@ -40,10 +40,14 @@ export function updateFrameCache(
   cache.coreCount = Math.max(1, snapshot.cores.length);
 }
 
-// 레이아웃 시뮬레이션의 입력. 순서는 스냅샷의 그룹 순서다.
-export function layoutNodesFrom(cache: FrameCache): LayoutNode[] {
+// 레이아웃 시뮬레이션의 입력. M5 부터는 스냅샷의 그룹이 아니라 존재 추적기의
+// 항목(떠나는 중인 그룹 포함)을 넘긴다 — 사라지는 천체도 연출이 끝날 때까지
+// 제자리를 지켜야 한다.
+export function layoutNodesFrom(
+  groups: Iterable<Pick<InterpolatedGroup, 'key' | 'mem_mb'>>,
+): LayoutNode[] {
   const nodes: LayoutNode[] = [];
-  for (const group of cache.byKey.values()) {
+  for (const group of groups) {
     nodes.push({ key: group.key, radius: radiusFor(group.mem_mb) });
   }
   return nodes;

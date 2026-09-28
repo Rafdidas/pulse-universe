@@ -7,6 +7,8 @@ import {
   FIXED_STEP,
   LayoutSim,
   MAX_DT,
+  OUTSIDE_MARGIN,
+  SPAWN_RADIUS,
   floatOffset,
   floatingPosition,
   type LayoutNode,
@@ -166,6 +168,24 @@ describe('LayoutSim', () => {
       sim.step(lone, FIXED_STEP);
     }
     expect(length(sim.position('solo.exe:1')!)).toBeLessThan(before);
+  });
+
+  it('places a key that arrives after settling outside the whole cluster', () => {
+    // 무리 안쪽에서 생기면 형성 연출이 다른 천체에 가려진다 (M5 스펙 8절).
+    const sim = settled(nodes);
+    const farthest = Math.max(...positionsOf(sim, nodes).map(length));
+
+    const newcomer: LayoutNode = { key: 'newcomer.exe:4242', radius: 1 };
+    sim.step([...nodes, newcomer], 0);
+
+    expect(length(sim.position(newcomer.key)!)).toBeCloseTo(farthest + OUTSIDE_MARGIN, 6);
+  });
+
+  it('still spreads the very first keys inside the spawn sphere', () => {
+    const sim = new LayoutSim();
+    sim.step(nodes, FIXED_STEP);
+    // 사전 수렴이 끝난 모양은 반지름 18 구 근처에 머문다.
+    expect(Math.max(...positionsOf(sim, nodes).map(length))).toBeLessThan(SPAWN_RADIUS + 5);
   });
 
   it('does nothing with an empty node list', () => {
