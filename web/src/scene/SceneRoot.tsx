@@ -43,13 +43,19 @@ export function SceneRoot() {
     context.layout.step(layoutNodesFrom(context.cache), context.cache.dtSec);
   }, BEFORE_NODES);
 
+  const keys = ids.map((id) => parseNodeId(id).key);
+  // 호버 중이던 그룹이 사라지면 R3F 가 onPointerOut 없이 오브젝트를 그냥
+  // 지운다. hovered 가 죽은 key 로 남아 있을 수 있으니, 지금도 있는 key
+  // 일 때만 툴팁을 그린다.
+  const liveHovered = hovered !== null && keys.includes(hovered) ? hovered : null;
+
   return (
     <SceneContext.Provider value={context}>
       {ids.map((id) => {
         const { key, account } = parseNodeId(id);
         return <ProcessNode key={key} nodeKey={key} account={account} />;
       })}
-      {hovered !== null && <Tooltip nodeKey={hovered} />}
+      {liveHovered !== null && <Tooltip nodeKey={liveHovered} />}
     </SceneContext.Provider>
   );
 }

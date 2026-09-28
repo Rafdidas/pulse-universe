@@ -23,7 +23,7 @@
       }
     },
     {
-      "files": ["src/scene/**"],
+      "files": ["src/scene/**", "src/shell/**"],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -31,7 +31,7 @@
             "patterns": [
               {
                 "group": ["*stream/*", "*/stream", "**/stream/**"],
-                "message": "scene/ reads only state/, never stream/ directly."
+                "message": "scene/ and shell/ read only state/, never stream/ directly."
               }
             ]
           }
