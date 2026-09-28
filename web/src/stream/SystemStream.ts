@@ -120,6 +120,9 @@ export class SystemStream {
   private handleMessage(text: string): void {
     // 닫기 직전에 큐에 들어가 있던 메시지가 뒤늦게 도착할 수 있다.
     // 이미 끝난 스트림이면 소비자에게 흘리지 않는다.
+    // 방어적 이중 장치다: 모든 소켓 핸들러가 먼저 isCurrent() 를 확인하고,
+    // stopped/version-mismatch 로 가는 모든 경로가 소켓을 떼어내므로 이 시점엔
+    // 이미 도달할 수 없어야 한다. 그래도 향후 변경에 대비해 남겨 둔다.
     if (this.stopped || this.status.state === 'version-mismatch') {
       return;
     }
@@ -150,12 +153,18 @@ export class SystemStream {
   }
 
   private handleClose(code: number): void {
+    // 방어적 이중 장치다: 모든 소켓 핸들러가 먼저 isCurrent() 를 확인하고,
+    // stopped/version-mismatch 로 가는 모든 경로가 소켓을 떼어내므로 이 시점엔
+    // 이미 도달할 수 없어야 한다. 그래도 향후 변경에 대비해 남겨 둔다.
     if (this.status.state === 'version-mismatch' || this.stopped) {
       return;
     }
 
     this.socket = null;
-    this.emit({ state: 'closed' });
+    // 죽은 엔진의 hello 를 닫힘 상태까지 들고 있으면 배지가 옛 호스트/승격
+    // 여부/간격을 계속 보여준다. intervalMs 는 스토어에 별도로 저장되어
+    // 있으므로 여기서 hello 를 지워도 보간 주기는 그대로 유지된다.
+    this.emit({ state: 'closed', hello: null });
 
     // 1000 은 엔진이 의도적으로 꺼진 것이다. 곧 다시 켜질 수 있으니 고정 간격으로
     // 빠르게 붙는다. 그 외는 원인을 모르므로 지수 백오프로 물러선다.

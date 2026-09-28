@@ -11,8 +11,8 @@ export function LifecycleLog({ entries }: Props) {
 
   return (
     <ul className="lifecycle-log">
-      {[...entries].reverse().map((entry, index) => (
-        <li key={`${entry.seq}:${entry.label}:${index}`} className={`entry-${entry.kind}`}>
+      {[...entries].reverse().map((entry) => (
+        <li key={`${entry.seq}:${entry.kind}:${entry.label}`} className={`entry-${entry.kind}`}>
           <span className="seq">{entry.seq}</span>
           <span className="kind">{entry.kind}</span>
           <span>{entry.label}</span>

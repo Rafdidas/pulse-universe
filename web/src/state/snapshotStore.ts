@@ -26,6 +26,7 @@ interface SnapshotState {
   pushSnapshot: (snapshot: Snapshot, now: number) => void;
   setStatus: (status: StreamStatus) => void;
   setIntervalMs: (ms: number) => void;
+  clearSnapshots: () => void;
   reset: () => void;
 }
 
@@ -60,6 +61,29 @@ export const useSnapshotStore = create<SnapshotState>((set) => ({
 
   pushSnapshot: (snapshot, now) =>
     set((state) => {
+      // 재연결 직후 엔진이 보유 중인 최신 스냅샷을 즉시 재전송하기 때문에,
+      // 클라이언트가 이미 가진 것과 같은 스냅샷(seq, t 모두 동일)이 다시
+      // 올 수 있다. 완전히 무시해야 로그에 같은 생멸 이벤트가 중복되지 않는다.
+      if (
+        state.current !== null &&
+        state.current.seq === snapshot.seq &&
+        state.current.t === snapshot.t
+      ) {
+        return state;
+      }
+
+      // 엔진이 재시작하면 seq 가 1부터 다시 시작한다. 이전 세션의 previous 와
+      // 섞어 보간하거나 로그를 이어 붙이면 안 되므로 새 세션으로 취급한다.
+      if (state.current !== null && snapshot.seq < state.current.seq) {
+        return {
+          previous: null,
+          current: snapshot,
+          arrivedAt: now,
+          lifecycleLog: entriesFor(snapshot).slice(-LIFECYCLE_LOG_LIMIT),
+        };
+      }
+
+      // 평범한 다음 스냅샷.
       const appended = [...state.lifecycleLog, ...entriesFor(snapshot)];
       return {
         previous: state.current,
@@ -73,6 +97,16 @@ export const useSnapshotStore = create<SnapshotState>((set) => ({
 
   // hello 가 알려주는 값이다. 하드코딩하지 않는다.
   setIntervalMs: (ms) => set({ intervalMs: ms }),
+
+  // 버전 불일치 시 계약서 7.2 절에 따라 화면에 남은 마지막 유효 프레임을
+  // 지운다. status 와 intervalMs 는 그대로 둔다 — 배너와 무관하다.
+  clearSnapshots: () =>
+    set({
+      previous: null,
+      current: null,
+      arrivedAt: 0,
+      lifecycleLog: [],
+    }),
 
   reset: () =>
     set({

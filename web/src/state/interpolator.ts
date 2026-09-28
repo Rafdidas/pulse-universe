@@ -1,57 +1,12 @@
-import type {
-  Ambient,
-  ChildProcess,
-  CoreLoad,
-  Flow,
-  Lifecycle,
-  ProcessGroup,
-  Snapshot,
-} from '../protocol/schema';
+import type { ChildProcess, CoreLoad, ProcessGroup, Snapshot } from '../protocol/schema';
 
-export interface InterpolatedCore {
-  id: number;
-  pct: number;
-}
-
-export interface InterpolatedChild {
-  pid: number;
-  name: string;
-  role: string;
-  cpu_pct: number | null;
-  mem_mb: number;
-  threads: number;
-}
-
-export interface InterpolatedGroup {
-  key: string;
-  name: string;
-  root_pid: number;
-  cpu_pct: number | null;
-  mem_mb: number;
-  proc_count: number;
-  thread_count: number;
-  started_at: number;
-  account: 'user' | 'system';
-  image_path: string;
-  children: InterpolatedChild[];
-}
-
-export interface InterpolatedSnapshot {
-  seq: number;
-  t: number;
-  system: {
-    cpu_pct: number | null;
-    mem_used_mb: number;
-    mem_total_mb: number;
-    process_total: number;
-    thread_total: number;
-  };
-  cores: InterpolatedCore[];
-  groups: InterpolatedGroup[];
-  flows: Flow[];
-  lifecycle: Lifecycle;
-  ambient: Ambient;
-}
+// 스키마의 필드를 손으로 다시 나열하지 않고 그대로 별칭한다. 엔진이 새 필드를
+// 추가하면 스키마는 그것을 받아들이므로, 여기서 따로 베껴 적은 타입이었다면
+// 컴파일러가 눈치채지 못한 채 조용히 빠지게 된다.
+export type InterpolatedChild = ChildProcess;
+export type InterpolatedGroup = ProcessGroup;
+export type InterpolatedCore = CoreLoad;
+export type InterpolatedSnapshot = Omit<Snapshot, 'type' | 'v'>;
 
 export interface InterpolationInput {
   previous: Snapshot | null;
@@ -92,12 +47,9 @@ function interpolateChildren(
   return current.map((child) => {
     const prior = before.get(child.pid);
     return {
-      pid: child.pid,
-      name: child.name,
-      role: child.role,
+      ...child,
       cpu_pct: lerpNullable(prior?.cpu_pct, child.cpu_pct, alpha),
       mem_mb: prior === undefined ? child.mem_mb : lerp(prior.mem_mb, child.mem_mb, alpha),
-      threads: child.threads,
     };
   });
 }
@@ -115,18 +67,11 @@ function interpolateGroups(
   return current.map((group) => {
     const prior = before.get(group.key);
     return {
-      key: group.key,
-      name: group.name,
-      root_pid: group.root_pid,
+      ...group,
       // 새로 나타난 그룹은 보간하지 않는다. 0 에서 자라 올라오면
       // 실제보다 작게 보이는 순간이 생긴다.
       cpu_pct: lerpNullable(prior?.cpu_pct, group.cpu_pct, alpha),
       mem_mb: prior === undefined ? group.mem_mb : lerp(prior.mem_mb, group.mem_mb, alpha),
-      proc_count: group.proc_count,
-      thread_count: group.thread_count,
-      started_at: group.started_at,
-      account: group.account,
-      image_path: group.image_path,
       children: interpolateChildren(prior?.children, group.children, alpha),
     };
   });
@@ -145,7 +90,7 @@ function interpolateCores(
   return current.map((core) => {
     const prior = before.get(core.id);
     return {
-      id: core.id,
+      ...core,
       pct: prior === undefined ? core.pct : lerp(prior.pct, core.pct, alpha),
     };
   });
@@ -169,23 +114,21 @@ export function sample(input: InterpolationInput, now: number): InterpolatedSnap
 
   const prior = continuous ? previous : null;
 
+  const { type: _type, v: _v, ...rest } = current;
+  void _type;
+  void _v;
+
   return {
-    seq: current.seq,
-    t: current.t,
+    ...rest,
     system: {
+      ...current.system,
       cpu_pct: lerpNullable(prior?.system.cpu_pct, current.system.cpu_pct, alpha),
       mem_used_mb:
         prior === null
           ? current.system.mem_used_mb
           : lerp(prior.system.mem_used_mb, current.system.mem_used_mb, alpha),
-      mem_total_mb: current.system.mem_total_mb,
-      process_total: current.system.process_total,
-      thread_total: current.system.thread_total,
     },
     cores: interpolateCores(prior?.cores, current.cores, alpha),
     groups: interpolateGroups(prior?.groups, current.groups, alpha),
-    flows: current.flows,
-    lifecycle: current.lifecycle,
-    ambient: current.ambient,
   };
 }

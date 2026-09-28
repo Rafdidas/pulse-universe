@@ -213,6 +213,32 @@ describe('interpolator', () => {
     expect(frame?.seq).toBe(2);
   });
 
+  it('carries an extra wire field through the group, child and top-level snapshot', () => {
+    // 스키마가 새 필드를 받아들이면 보간된 프레임도 그것을 그대로 들고 있어야
+    // 한다 — 손으로 필드를 나열해 베끼면 여기서 조용히 빠진다.
+    const child = { pid: 5, name: 'c.exe', role: 'child', cpu_pct: 0, mem_mb: 100, threads: 1, extra_child_field: 'child-value' };
+    const group = { ...makeGroup({ children: [child as never] }), extra_group_field: 'group-value' };
+    const current = {
+      ...makeSnapshot(1, { groups: [group as never] }),
+      extra_snapshot_field: 'snapshot-value',
+    } as unknown as Snapshot;
+
+    const frame = sample(input({ current, arrivedAt: 0 }), 0);
+    if (frame === null) {
+      throw new Error('expected a frame');
+    }
+
+    expect((frame as unknown as Record<string, unknown>).extra_snapshot_field).toBe(
+      'snapshot-value',
+    );
+    expect((frame.groups[0] as unknown as Record<string, unknown>).extra_group_field).toBe(
+      'group-value',
+    );
+    expect(
+      (frame.groups[0].children[0] as unknown as Record<string, unknown>).extra_child_field,
+    ).toBe('child-value');
+  });
+
   it('does not divide by a zero interval', () => {
     const previous = makeSnapshot(1);
     const current = makeSnapshot(2, { groups: [makeGroup({ cpu_pct: 30 })] });

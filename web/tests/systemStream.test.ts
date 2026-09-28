@@ -361,6 +361,21 @@ describe('SystemStream', () => {
     expect(harness.sockets).toHaveLength(2);
   });
 
+  it('clears the hello on close and sets it again after reconnecting', () => {
+    harness.stream.start();
+    harness.open();
+    harness.deliver(helloText());
+    expect(harness.status.hello).not.toBeNull();
+
+    harness.closeWith(1006);
+    expect(harness.status.hello).toBeNull();
+
+    harness.fireTimer();
+    harness.open();
+    harness.deliver(helloText());
+    expect(harness.status.hello?.interval_ms).toBe(1000);
+  });
+
   it('ignores events from a socket that has been replaced', () => {
     // 버려진 소켓의 핸들러는 여전히 같은 인스턴스를 가리킨다.
     // 뒤늦은 이벤트가 현재 연결의 상태를 건드리면 안 된다.

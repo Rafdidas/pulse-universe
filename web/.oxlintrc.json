@@ -4,5 +4,43 @@
   "rules": {
     "react/rules-of-hooks": "error",
     "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/dashboard/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["*stream/*", "*/stream", "**/stream/**"],
+                "message": "dashboard/ reads only state/, never stream/ directly."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/state/interpolator.ts", "src/stream/SystemStream.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "react",
+                "message": "This file must not import react at runtime (import type only)."
+              },
+              {
+                "name": "zustand",
+                "message": "This file must not import zustand at runtime (import type only)."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

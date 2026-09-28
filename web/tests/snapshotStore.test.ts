@@ -113,4 +113,93 @@ describe('snapshot store', () => {
     expect(state.current).toBeNull();
     expect(state.lifecycleLog).toHaveLength(0);
   });
+
+  it('ignores a replay of the current snapshot (same seq, same t)', () => {
+    const store = useSnapshotStore.getState();
+    store.pushSnapshot(
+      makeSnapshot(3, { lifecycle: { spawned: [{ pid: 1, ppid: 0, name: 'a.exe', group: 'a.exe:1' }], terminated: [] } }),
+      100,
+    );
+    const beforeState = useSnapshotStore.getState();
+    const beforeCurrent = beforeState.current;
+    const beforePrevious = beforeState.previous;
+    const beforeLog = beforeState.lifecycleLog;
+
+    // 같은 seq, 같은 t 로 재전송된 스냅샷 — 엔진이 재연결 시 최신 스냅샷을 다시 보낸 것이다.
+    store.pushSnapshot(
+      makeSnapshot(3, { lifecycle: { spawned: [{ pid: 1, ppid: 0, name: 'a.exe', group: 'a.exe:1' }], terminated: [] } }),
+      200,
+    );
+
+    const state = useSnapshotStore.getState();
+    expect(state.current).toBe(beforeCurrent);
+    expect(state.previous).toBe(beforePrevious);
+    expect(state.arrivedAt).toBe(100);
+    expect(state.lifecycleLog).toEqual(beforeLog);
+    expect(state.lifecycleLog).toHaveLength(1);
+  });
+
+  it('treats a lower seq as a new engine session and clears previous plus the log', () => {
+    const store = useSnapshotStore.getState();
+    store.pushSnapshot(
+      makeSnapshot(40, { lifecycle: { spawned: [], terminated: [1] } }),
+      100,
+    );
+    store.pushSnapshot(
+      makeSnapshot(43, { lifecycle: { spawned: [], terminated: [2] } }),
+      1100,
+    );
+
+    // 엔진이 재시작하면 seq 는 1부터 다시 시작한다. 이전 세션과 섞이면 안 된다.
+    store.pushSnapshot(
+      makeSnapshot(2, { lifecycle: { spawned: [], terminated: [99] } }),
+      2100,
+    );
+
+    const state = useSnapshotStore.getState();
+    expect(state.previous).toBeNull();
+    expect(state.current?.seq).toBe(2);
+    expect(state.arrivedAt).toBe(2100);
+    expect(state.lifecycleLog).toHaveLength(1);
+    expect(state.lifecycleLog[0].label).toContain('99');
+  });
+
+  it('treats a same seq but different t as the normal path, not a replay', () => {
+    const store = useSnapshotStore.getState();
+    store.pushSnapshot(
+      makeSnapshot(5, { t: 1000, lifecycle: { spawned: [], terminated: [1] } }),
+      100,
+    );
+
+    // seq 는 같지만 t 가 다르면 재전송이 아니다 — 평범한 다음 스냅샷으로 처리한다.
+    store.pushSnapshot(
+      makeSnapshot(5, { t: 2000, lifecycle: { spawned: [], terminated: [2] } }),
+      200,
+    );
+
+    const state = useSnapshotStore.getState();
+    expect(state.previous?.seq).toBe(5);
+    expect(state.previous?.t).toBe(1000);
+    expect(state.current?.t).toBe(2000);
+    expect(state.arrivedAt).toBe(200);
+    expect(state.lifecycleLog).toHaveLength(2);
+  });
+
+  it('clearSnapshots wipes snapshot data but keeps status and intervalMs', () => {
+    const store = useSnapshotStore.getState();
+    store.pushSnapshot(makeSnapshot(1), 100);
+    store.pushSnapshot(makeSnapshot(2), 200);
+    store.setIntervalMs(500);
+    const statusBefore = useSnapshotStore.getState().status;
+
+    useSnapshotStore.getState().clearSnapshots();
+
+    const state = useSnapshotStore.getState();
+    expect(state.previous).toBeNull();
+    expect(state.current).toBeNull();
+    expect(state.arrivedAt).toBe(0);
+    expect(state.lifecycleLog).toHaveLength(0);
+    expect(state.intervalMs).toBe(500);
+    expect(state.status).toBe(statusBefore);
+  });
 });
