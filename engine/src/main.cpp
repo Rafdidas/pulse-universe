@@ -72,10 +72,15 @@ int runServe(pulse::ISystemReader& reader, const pulse::Options& options) {
         cfg.server.web_root = options.web_root;
     }
 
+    const bool has_web_root = !cfg.server.web_root.empty();
     const pulse::ServeResult result =
-        pulse::runServe(reader, cfg, [](unsigned short port) {
+        pulse::runServe(reader, cfg, [has_web_root](unsigned short port) {
             std::printf("pulse-engine listening on ws://127.0.0.1:%u\n",
                         static_cast<unsigned>(port));
+            if (has_web_root) {
+                std::printf("open http://127.0.0.1:%u/ in a browser\n",
+                            static_cast<unsigned>(port));
+            }
             std::fflush(stdout);
         });
 

@@ -99,6 +99,11 @@ private:
                            "this endpoint speaks websocket only", "text/plain");
                 return;
             }
+            if (request_.method() != http::verb::get) {
+                sendSimple(http::status::method_not_allowed, "method not allowed",
+                           "text/plain", "GET");
+                return;
+            }
             serveStatic();
             return;
         }
@@ -217,11 +222,23 @@ private:
         }
     }
 
+    // allow_header 가 비어 있지 않으면 Allow 헤더를 붙인다 (405 응답용).
+    // no_cache 는 index.html 응답에 Cache-Control: no-cache 를 붙인다 —
+    // 새로 빌드된 프론트엔드가 새로고침에서 바로 보이도록.
     void sendSimple(http::status status, const std::string& body,
-                    const std::string& content_type) {
+                    const std::string& content_type,
+                    const std::string& allow_header = {}, bool no_cache = false) {
         auto response = std::make_shared<http::response<http::string_body>>(
             status, request_.version());
         response->set(http::field::content_type, content_type);
+        response->set(http::field::x_content_type_options, "nosniff");
+        if (!allow_header.empty()) {
+            response->set(http::field::allow, allow_header);
+        }
+        if (no_cache) {
+            response->set(http::field::cache_control, "no-cache");
+        }
+        response->keep_alive(false);
         response->body() = body;
         response->prepare_payload();
         http::async_write(ws_.next_layer(), *response,
@@ -234,26 +251,36 @@ private:
     // web_root 아래의 파일로 응답한다. 없으면 index.html 로 대체한다 (SPA 라우팅).
     void serveStatic() {
         const std::string& root = server_.cfg_.web_root;
+        const std::string target = std::string(request_.target());
 
-        const auto resolved = resolveWebPath(root, std::string(request_.target()));
-        if (!resolved.has_value()) {
-            std::fprintf(stderr, "refused path outside the web root: %s\n",
-                         std::string(request_.target()).c_str());
+        const WebPath resolved = resolveWebPath(root, target);
+        if (resolved.status == WebPathStatus::Outside) {
+            std::fprintf(stderr, "refused path outside the web root: %s\n", target.c_str());
             sendSimple(http::status::forbidden, "forbidden", "text/plain");
             return;
         }
+        if (resolved.status == WebPathStatus::Unresolvable) {
+            // 순환 reparse point, 접근 거부, ADS 구문 등 — 탈출 시도라는 증거는
+            // 없다. 없는 파일처럼 취급해 SPA 폴백을 태운다.
+            std::fprintf(stderr,
+                         "could not resolve request path, serving the app instead: %s\n",
+                         target.c_str());
+        }
 
-        std::string file = *resolved;
+        std::string file = resolved.path;
         std::error_code regular_ec;
-        if (!std::filesystem::is_regular_file(file, regular_ec) || regular_ec) {
-            const auto fallback = resolveWebPath(root, "/index.html");
+        const bool have_file = resolved.status == WebPathStatus::Ok &&
+                               std::filesystem::is_regular_file(file, regular_ec) &&
+                               !regular_ec;
+        if (!have_file) {
+            const WebPath fallback = resolveWebPath(root, "/index.html");
             std::error_code fallback_ec;
-            if (!fallback.has_value() ||
-                !std::filesystem::is_regular_file(*fallback, fallback_ec) || fallback_ec) {
+            if (fallback.status != WebPathStatus::Ok ||
+                !std::filesystem::is_regular_file(fallback.path, fallback_ec) || fallback_ec) {
                 sendSimple(http::status::not_found, "not found", "text/plain");
                 return;
             }
-            file = *fallback;
+            file = fallback.path;
         }
 
         std::ifstream input(file, std::ios::binary);
@@ -264,7 +291,9 @@ private:
         std::ostringstream buffer;
         buffer << input.rdbuf();
 
-        sendSimple(http::status::ok, buffer.str(), mimeTypeFor(file));
+        const bool is_index = std::filesystem::path(file).filename() == "index.html";
+        sendSimple(http::status::ok, buffer.str(), mimeTypeFor(file), /*allow_header=*/{},
+                  is_index);
     }
 
     websocket::stream<tcp::socket> ws_;

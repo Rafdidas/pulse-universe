@@ -355,14 +355,15 @@ private:
     std::filesystem::path root_;
 };
 
-// 동기 HTTP GET. 응답 전체를 돌려준다.
-http::response<http::string_body> httpGet(unsigned short port, const std::string& target) {
+// 동기 HTTP 요청. 응답 전체를 돌려준다. method 는 기본이 GET.
+http::response<http::string_body> httpRequest(unsigned short port, const std::string& target,
+                                              http::verb method = http::verb::get) {
     net::io_context ioc;
     tcp::resolver resolver(ioc);
     beast::tcp_stream stream(ioc);
     stream.connect(resolver.resolve("127.0.0.1", std::to_string(port)));
 
-    http::request<http::string_body> request(http::verb::get, target, 11);
+    http::request<http::string_body> request(method, target, 11);
     request.set(http::field::host, "127.0.0.1");
     http::write(stream, request);
 
@@ -373,6 +374,10 @@ http::response<http::string_body> httpGet(unsigned short port, const std::string
     beast::error_code ignored;
     stream.socket().shutdown(tcp::socket::shutdown_both, ignored);
     return response;
+}
+
+http::response<http::string_body> httpGet(unsigned short port, const std::string& target) {
+    return httpRequest(port, target, http::verb::get);
 }
 
 }  // namespace
@@ -436,6 +441,91 @@ TEST_CASE("a path escaping the web root is refused", "[ws]") {
     io.join();
 
     REQUIRE(response.result() == http::status::forbidden);
+}
+
+TEST_CASE("a colon-style path falls back to the app instead of 403", "[ws]") {
+    // /chrome.exe:1234 는 Windows 에서 대체 데이터 스트림 구문으로 파싱되어
+    // weakly_canonical 이 해석할 수 없다. 그룹 키가 이런 모양이므로 탈출
+    // 시도로 취급해 403 을 주면 안 되고, 없는 파일처럼 SPA 폴백을 태워야 한다.
+    TempWebRoot web;
+    ServerConfig cfg;
+    cfg.port = 0;
+    cfg.web_root = web.path();
+
+    net::io_context ioc;
+    WebSocketServer server(ioc, cfg);
+    const unsigned short port = server.port();
+    std::thread io([&] { ioc.run(); });
+
+    const auto response = httpGet(port, "/chrome.exe:1234");
+
+    server.stop();
+    io.join();
+
+    REQUIRE(response.result() == http::status::ok);
+    REQUIRE(response.body() == "<html>index</html>");
+}
+
+TEST_CASE("a non-GET request to a web root is rejected with 405", "[ws]") {
+    TempWebRoot web;
+    ServerConfig cfg;
+    cfg.port = 0;
+    cfg.web_root = web.path();
+
+    net::io_context ioc;
+    WebSocketServer server(ioc, cfg);
+    const unsigned short port = server.port();
+    std::thread io([&] { ioc.run(); });
+
+    const auto response = httpRequest(port, "/", http::verb::post);
+
+    server.stop();
+    io.join();
+
+    REQUIRE(response.result() == http::status::method_not_allowed);
+    REQUIRE(response[http::field::allow] == "GET");
+}
+
+TEST_CASE("a served index.html carries no-cache and nosniff headers", "[ws]") {
+    TempWebRoot web;
+    ServerConfig cfg;
+    cfg.port = 0;
+    cfg.web_root = web.path();
+
+    net::io_context ioc;
+    WebSocketServer server(ioc, cfg);
+    const unsigned short port = server.port();
+    std::thread io([&] { ioc.run(); });
+
+    const auto response = httpGet(port, "/");
+
+    server.stop();
+    io.join();
+
+    REQUIRE(response.result() == http::status::ok);
+    REQUIRE(response[http::field::cache_control] == "no-cache");
+    REQUIRE(response[http::field::x_content_type_options] == "nosniff");
+}
+
+TEST_CASE("a non-index static file has no cache-control header", "[ws]") {
+    TempWebRoot web;
+    ServerConfig cfg;
+    cfg.port = 0;
+    cfg.web_root = web.path();
+
+    net::io_context ioc;
+    WebSocketServer server(ioc, cfg);
+    const unsigned short port = server.port();
+    std::thread io([&] { ioc.run(); });
+
+    const auto response = httpGet(port, "/assets/app.js");
+
+    server.stop();
+    io.join();
+
+    REQUIRE(response.result() == http::status::ok);
+    REQUIRE(response[http::field::cache_control].empty());
+    REQUIRE(response[http::field::x_content_type_options] == "nosniff");
 }
 
 TEST_CASE("without a web root a plain request gets 426 rather than silence", "[ws]") {
