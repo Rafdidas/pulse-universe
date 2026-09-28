@@ -78,6 +78,7 @@ TEST_CASE("hello carries the envelope, capabilities and host", "[serialize]") {
     info.core_count = 28;
     info.elevated = true;
     info.os = "Windows";
+    info.session = "abc123deadbeef01";
 
     const json::object o = parseObject(serializeHello(info));
 
@@ -88,6 +89,7 @@ TEST_CASE("hello carries the envelope, capabilities and host", "[serialize]") {
     REQUIRE(o.at("capabilities").as_object().at("thread_mapping").as_string() == "estimated");
     REQUIRE(o.at("host").as_object().at("os").as_string() == "Windows");
     REQUIRE(o.at("host").as_object().at("elevated").as_bool());
+    REQUIRE(o.at("session").as_string() == "abc123deadbeef01");
 }
 
 TEST_CASE("snapshot carries the protocol envelope", "[serialize]") {

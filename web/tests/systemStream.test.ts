@@ -100,6 +100,7 @@ function helloText(): string {
     core_count: 28,
     capabilities: { thread_mapping: 'estimated' },
     host: { os: 'Windows', elevated: true },
+    session: 'abc123deadbeef01',
   });
 }
 

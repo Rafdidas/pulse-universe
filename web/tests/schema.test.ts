@@ -15,6 +15,7 @@ function helloText(overrides: Record<string, unknown> = {}): string {
     core_count: 28,
     capabilities: { thread_mapping: 'estimated' },
     host: { os: 'Windows', elevated: false },
+    session: 'abc123deadbeef01',
     ...overrides,
   });
 }

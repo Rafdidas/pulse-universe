@@ -48,6 +48,9 @@ export function useSystemStream(): void {
         useSnapshotStore.getState().setStatus(status);
         if (status.hello !== null) {
           useSnapshotStore.getState().setIntervalMs(status.hello.interval_ms);
+          // hello 는 언제나 스냅샷보다 먼저 도착한다 — 새 세션의 첫 스냅샷이
+          // 오기 전에 스토어가 비워져 있어야 한다.
+          useSnapshotStore.getState().beginSession(status.hello.session);
         }
         // 계약서 7.2 절: 버전이 맞지 않으면 데이터를 버리고 사용자에게 알린다.
         // 배너 밑에 마지막 유효 프레임이 계속 보이면 안 된다.

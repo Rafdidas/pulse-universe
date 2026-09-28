@@ -466,6 +466,46 @@ TEST_CASE("a colon-style path falls back to the app instead of 403", "[ws]") {
     REQUIRE(response.body() == "<html>index</html>");
 }
 
+TEST_CASE("an unresolvable path falls back to the app instead of 403", "[ws]") {
+    // resolveWebPath 가 Unresolvable 을 내는 경우(서로를 가리키는 순환
+    // 정션)를 엔드투엔드로 태운다. 이 기기에서는 /chrome.exe:1234 가
+    // Ok 로 풀려버려 그 테스트가 실제로는 이 분기를 태우지 못한다.
+    TempWebRoot web;
+    const std::filesystem::path root(web.path());
+    std::error_code ignored;
+
+    std::filesystem::create_directories(root / "b", ignored);
+    const int created_a =
+        std::system(("cmd /c mklink /J \"" + (root / "a").string() + "\" \"" +
+                     (root / "b").string() + "\" >nul 2>&1")
+                        .c_str());
+    REQUIRE(created_a == 0);
+
+    std::filesystem::remove(root / "b", ignored);
+    const int created_b =
+        std::system(("cmd /c mklink /J \"" + (root / "b").string() + "\" \"" +
+                     (root / "a").string() + "\" >nul 2>&1")
+                        .c_str());
+    REQUIRE(created_b == 0);
+
+    ServerConfig cfg;
+    cfg.port = 0;
+    cfg.web_root = web.path();
+
+    net::io_context ioc;
+    WebSocketServer server(ioc, cfg);
+    const unsigned short port = server.port();
+    std::thread io([&] { ioc.run(); });
+
+    const auto response = httpGet(port, "/a/x");
+
+    server.stop();
+    io.join();
+
+    REQUIRE(response.result() == http::status::ok);
+    REQUIRE(response.body() == "<html>index</html>");
+}
+
 TEST_CASE("a non-GET request to a web root is rejected with 405", "[ws]") {
     TempWebRoot web;
     ServerConfig cfg;

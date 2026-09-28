@@ -111,6 +111,7 @@ std::string serializeHello(const HelloInfo& info) {
         {"core_count", info.core_count},
         {"capabilities", json::object{{"thread_mapping", info.thread_mapping}}},
         {"host", json::object{{"os", info.os}, {"elevated", info.elevated}}},
+        {"session", info.session},
     };
     return json::serialize(message);
 }

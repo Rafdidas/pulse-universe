@@ -140,6 +140,63 @@ TEST_CASE("the hello message carries the reader's host info", "[serve]") {
     server_thread.join();
 }
 
+namespace {
+
+// 새 클라이언트를 붙여 hello 메시지 하나를 받아온다.
+json::value receiveHello(FakeSystemReader& reader, const ServeConfig& cfg) {
+    std::atomic<unsigned short> port{0};
+
+    std::thread server_thread([&] {
+        runServe(reader, cfg, [&](unsigned short p) { port.store(p); });
+    });
+
+    while (port.load() == 0) {
+        std::this_thread::yield();
+    }
+
+    TestClient client(port.load());
+    const std::string hello_text = client.read();
+    const json::value hello = json::parse(hello_text);
+
+    client.close();
+    server_thread.join();
+    return hello;
+}
+
+}  // namespace
+
+TEST_CASE("the hello message carries a 16-character lowercase hex session", "[serve]") {
+    FakeSystemReader reader(someSamples(), 6);
+    ServeConfig cfg;
+    cfg.iterations = 3;
+    cfg.interval_ms = 50;
+    cfg.server.port = 0;
+
+    const json::value hello = receiveHello(reader, cfg);
+    const std::string session(hello.at("session").as_string());
+
+    REQUIRE(session.size() == 16);
+    REQUIRE(session.find_first_not_of("0123456789abcdef") == std::string::npos);
+}
+
+TEST_CASE("two separate runServe runs produce different sessions", "[serve]") {
+    FakeSystemReader reader_a(someSamples(), 6);
+    ServeConfig cfg_a;
+    cfg_a.iterations = 3;
+    cfg_a.interval_ms = 50;
+    cfg_a.server.port = 0;
+    const json::value hello_a = receiveHello(reader_a, cfg_a);
+
+    FakeSystemReader reader_b(someSamples(), 6);
+    ServeConfig cfg_b;
+    cfg_b.iterations = 3;
+    cfg_b.interval_ms = 50;
+    cfg_b.server.port = 0;
+    const json::value hello_b = receiveHello(reader_b, cfg_b);
+
+    REQUIRE(hello_a.at("session").as_string() != hello_b.at("session").as_string());
+}
+
 TEST_CASE("a snapshot follows the hello message", "[serve]") {
     FakeSystemReader reader(someSamples(), 6);
     ServeConfig cfg;

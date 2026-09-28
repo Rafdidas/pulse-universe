@@ -139,27 +139,78 @@ describe('snapshot store', () => {
     expect(state.lifecycleLog).toHaveLength(1);
   });
 
-  it('treats a lower seq as a new engine session and clears previous plus the log', () => {
+  it('beginSession on an empty store leaves it empty and records the session', () => {
+    useSnapshotStore.getState().beginSession('A');
+
+    const state = useSnapshotStore.getState();
+    expect(state.session).toBe('A');
+    expect(state.current).toBeNull();
+    expect(state.previous).toBeNull();
+    expect(state.lifecycleLog).toHaveLength(0);
+  });
+
+  it('beginSession with the same session keeps snapshot data intact', () => {
     const store = useSnapshotStore.getState();
+    store.beginSession('A');
+    store.pushSnapshot(makeSnapshot(1), 100);
+    store.pushSnapshot(makeSnapshot(2), 200);
+    const beforeCurrent = useSnapshotStore.getState().current;
+    const beforePrevious = useSnapshotStore.getState().previous;
+    const beforeLog = useSnapshotStore.getState().lifecycleLog;
+
+    store.beginSession('A');
+
+    const state = useSnapshotStore.getState();
+    expect(state.current).toBe(beforeCurrent);
+    expect(state.previous).toBe(beforePrevious);
+    expect(state.lifecycleLog).toBe(beforeLog);
+    expect(state.session).toBe('A');
+  });
+
+  it('beginSession with a different session clears data but keeps status and intervalMs', () => {
+    const store = useSnapshotStore.getState();
+    store.beginSession('A');
+    store.pushSnapshot(makeSnapshot(1), 100);
+    store.pushSnapshot(makeSnapshot(2), 200);
+    store.setIntervalMs(500);
+    const statusBefore = useSnapshotStore.getState().status;
+
+    store.beginSession('B');
+
+    const state = useSnapshotStore.getState();
+    expect(state.session).toBe('B');
+    expect(state.previous).toBeNull();
+    expect(state.current).toBeNull();
+    expect(state.arrivedAt).toBe(0);
+    expect(state.lifecycleLog).toHaveLength(0);
+    expect(state.intervalMs).toBe(500);
+    expect(state.status).toBe(statusBefore);
+  });
+
+  it('a new session clears data mixed across an out-of-order-looking seq (5 then restart at 8)', () => {
+    const store = useSnapshotStore.getState();
+    store.beginSession('A');
     store.pushSnapshot(
-      makeSnapshot(40, { lifecycle: { spawned: [], terminated: [1] } }),
+      makeSnapshot(3, { lifecycle: { spawned: [], terminated: [1] } }),
       100,
     );
     store.pushSnapshot(
-      makeSnapshot(43, { lifecycle: { spawned: [], terminated: [2] } }),
-      1100,
+      makeSnapshot(5, { lifecycle: { spawned: [], terminated: [2] } }),
+      200,
     );
 
-    // 엔진이 재시작하면 seq 는 1부터 다시 시작한다. 이전 세션과 섞이면 안 된다.
+    // 새 엔진이 이미 8초 돌아간 상태에서 재접속했다 — seq 는 낮아지지 않고
+    // 오히려 더 큰 값(8)으로 온다. session 이 바뀌었으므로 이전 세션의
+    // previous 와 로그가 섞이면 안 된다.
+    store.beginSession('B');
     store.pushSnapshot(
-      makeSnapshot(2, { lifecycle: { spawned: [], terminated: [99] } }),
-      2100,
+      makeSnapshot(8, { lifecycle: { spawned: [], terminated: [99] } }),
+      300,
     );
 
     const state = useSnapshotStore.getState();
     expect(state.previous).toBeNull();
-    expect(state.current?.seq).toBe(2);
-    expect(state.arrivedAt).toBe(2100);
+    expect(state.current?.seq).toBe(8);
     expect(state.lifecycleLog).toHaveLength(1);
     expect(state.lifecycleLog[0].label).toContain('99');
   });

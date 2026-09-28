@@ -31,11 +31,11 @@
             "paths": [
               {
                 "name": "react",
-                "message": "This file must not import react at runtime (import type only)."
+                "message": "This file must not import react or zustand."
               },
               {
                 "name": "zustand",
-                "message": "This file must not import zustand at runtime (import type only)."
+                "message": "This file must not import react or zustand."
               }
             ]
           }

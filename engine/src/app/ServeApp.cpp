@@ -4,7 +4,11 @@
 #include <boost/asio/post.hpp>
 #include <boost/asio/signal_set.hpp>
 
+#include <cstdint>
+#include <iomanip>
 #include <memory>
+#include <random>
+#include <sstream>
 #include <thread>
 
 #include "app/EngineLoop.h"
@@ -12,6 +16,23 @@
 #include "network/WebSocketServer.h"
 
 namespace pulse {
+
+namespace {
+
+// 프로세스의 한 번의 실행을 식별하는 16자리 소문자 16진수 문자열을 만든다.
+// std::random_device 로 시드해 std::mt19937_64 를 돌린다 — 플랫폼 API 를
+// 쓰지 않아 src/app/ 에 <windows.h> 가 들어오지 않는다.
+std::string generateSessionId() {
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    const uint64_t value = gen();
+
+    std::ostringstream out;
+    out << std::hex << std::setfill('0') << std::setw(16) << value;
+    return out.str();
+}
+
+}  // namespace
 
 ServeResult runServe(ISystemReader& reader, const ServeConfig& cfg,
                      std::function<void(unsigned short)> on_listening) {
@@ -37,6 +58,7 @@ ServeResult runServe(ISystemReader& reader, const ServeConfig& cfg,
     const HostInfo host = reader.hostInfo();
     hello.os = host.os;
     hello.elevated = host.elevated;
+    hello.session = generateSessionId();
     server->setHello(std::make_shared<const std::string>(serializeHello(hello)));
 
     EngineLoopConfig loop_cfg;

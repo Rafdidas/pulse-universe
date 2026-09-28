@@ -18,6 +18,9 @@ struct HelloInfo {
     // core/Snapshot.h 의 Flow::source 가 도메인 계층에서 같은 값을 나른다 —
     // 이걸 바꾸면 그쪽도 같이 바꿔야 한다.
     std::string thread_mapping = "estimated";
+    // 엔진 프로세스의 한 번의 실행을 식별한다. 재시작할 때마다 바뀐다.
+    // 클라이언트는 이 값으로 재연결(같은 세션)과 재시작(다른 세션)을 구별한다.
+    std::string session;
 };
 
 // 계약서 4.3 절 형식.

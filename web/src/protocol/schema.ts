@@ -92,6 +92,7 @@ export const HelloSchema = z.object({
     os: z.string(),
     elevated: z.boolean(),
   }),
+  session: z.string(),
 });
 
 export const MessageSchema = z.discriminatedUnion('type', [HelloSchema, SnapshotSchema]);
