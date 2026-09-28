@@ -1,5 +1,8 @@
 #pragma once
 
+#include <string>
+#include <unordered_set>
+
 #include "core/CpuDelta.h"
 #include "core/FlowEstimator.h"
 #include "core/GroupBuilder.h"
@@ -29,6 +32,8 @@ private:
     ProcessFilter filter_;
     LifecycleTracker lifecycle_;
     FlowEstimator flow_estimator_;
+    // 직전 스냅샷에 실린 그룹 key. 다음 선택에서 유지 보너스를 받는다.
+    std::unordered_set<std::string> shown_keys_;
     uint64_t seq_ = 0;
 };
 

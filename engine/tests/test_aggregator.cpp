@@ -280,3 +280,40 @@ TEST_CASE("a group's cpu is the sum of members that have a reading", "[aggregate
     REQUIRE(snap.groups[0].cpu_pct.has_value());
     REQUIRE_THAT(*snap.groups[0].cpu_pct, Catch::Matchers::WithinAbs(5.0, 0.0001));
 }
+
+TEST_CASE("a group shown last time keeps its place against a slightly bigger newcomer",
+          "[aggregate]") {
+    // 첫 집계에서 110 MB 짜리가 아직 없으므로 100 MB 짜리가 뽑힌다. 둘째 집계에서
+    // 110 MB 짜리가 나타나도 10% 차이는 유지 보너스(×2.0)를 넘지 못한다.
+    AggregatorConfig cfg;
+    cfg.filter.max_groups = 1;
+    DataAggregator aggregator(2, cfg);
+
+    const auto first = aggregator.aggregate(
+        makeSample({makeProcess(1, 0, "incumbent.exe", 0, 100ull * 1024 * 1024)}, 1000));
+    REQUIRE(first.groups.at(0).name == "incumbent.exe");
+
+    const auto second = aggregator.aggregate(makeSample(
+        {
+            makeProcess(1, 0, "incumbent.exe", 0, 100ull * 1024 * 1024),
+            makeProcess(2, 0, "newcomer.exe", 0, 110ull * 1024 * 1024),
+        },
+        2000));
+    REQUIRE(second.groups.size() == 1);
+    REQUIRE(second.groups.at(0).name == "incumbent.exe");
+}
+
+TEST_CASE("the very first selection has no incumbents", "[aggregate]") {
+    AggregatorConfig cfg;
+    cfg.filter.max_groups = 1;
+    DataAggregator aggregator(2, cfg);
+
+    const auto first = aggregator.aggregate(makeSample(
+        {
+            makeProcess(1, 0, "smaller.exe", 0, 100ull * 1024 * 1024),
+            makeProcess(2, 0, "bigger.exe", 0, 110ull * 1024 * 1024),
+        },
+        1000));
+
+    REQUIRE(first.groups.at(0).name == "bigger.exe");
+}

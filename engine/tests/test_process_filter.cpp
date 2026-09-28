@@ -159,3 +159,68 @@ TEST_CASE("the configured weights change the ranking", "[filter]") {
     const auto by_memory = ProcessFilter(memory_led).select(groups, 32768.0);
     REQUIRE(by_memory[0].name == "mem_heavy.exe");
 }
+
+TEST_CASE("an incumbent group survives a newcomer that is only slightly ahead", "[filter]") {
+    FilterConfig cfg;
+    cfg.max_groups = 1;
+    const ProcessFilter filter(cfg);
+
+    // 신참이 10% 앞서지만 기존 그룹의 ×2.0 보너스를 넘지 못한다.
+    const auto out = filter.select(
+        {
+            makeGroup("newcomer.exe", 2, 110.0),
+            makeGroup("incumbent.exe", 1, 100.0),
+        },
+        32768.0, {"incumbent.exe:1"});
+
+    REQUIRE(out.size() == 1);
+    REQUIRE(out[0].name == "incumbent.exe");
+}
+
+TEST_CASE("a newcomer more than the bonus ahead displaces an incumbent", "[filter]") {
+    FilterConfig cfg;
+    cfg.max_groups = 1;
+    const ProcessFilter filter(cfg);
+
+    // 210 / 100 = 2.1 > 2.0.
+    const auto out = filter.select(
+        {
+            makeGroup("newcomer.exe", 2, 210.0),
+            makeGroup("incumbent.exe", 1, 100.0),
+        },
+        32768.0, {"incumbent.exe:1"});
+
+    REQUIRE(out[0].name == "newcomer.exe");
+}
+
+TEST_CASE("the incumbent bonus never changes how many groups are selected", "[filter]") {
+    FilterConfig cfg;
+    cfg.max_groups = 2;
+    const ProcessFilter filter(cfg);
+
+    const auto out = filter.select(
+        {
+            makeGroup("a.exe", 1, 100.0),
+            makeGroup("b.exe", 2, 200.0),
+            makeGroup("c.exe", 3, 300.0),
+        },
+        32768.0, {"a.exe:1", "b.exe:2", "c.exe:3", "gone.exe:9"});
+
+    REQUIRE(out.size() == 2);
+}
+
+TEST_CASE("the incumbent bonus is configurable and 1.0 turns it off", "[filter]") {
+    FilterConfig cfg;
+    cfg.max_groups = 1;
+    cfg.incumbent_bonus = 1.0;
+    const ProcessFilter filter(cfg);
+
+    const auto out = filter.select(
+        {
+            makeGroup("newcomer.exe", 2, 110.0),
+            makeGroup("incumbent.exe", 1, 100.0),
+        },
+        32768.0, {"incumbent.exe:1"});
+
+    REQUIRE(out[0].name == "newcomer.exe");
+}

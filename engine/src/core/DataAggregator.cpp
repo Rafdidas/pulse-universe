@@ -119,8 +119,13 @@ SystemSnapshot DataAggregator::aggregate(const RawSample& sample) {
     }
 
     // 6. 상위 N개 선택. 합계와 생명주기는 이미 전체 기준으로 계산됐다.
+    // 직전에 보였던 그룹은 유지 보너스를 받는다.
     snapshot.groups = filter_.select(std::move(grouped.groups),
-                                     snapshot.system.mem_total_mb);
+                                     snapshot.system.mem_total_mb, shown_keys_);
+    shown_keys_.clear();
+    for (const ProcessGroup& g : snapshot.groups) {
+        shown_keys_.insert(g.key);
+    }
 
     // 7. 화면에 남은 그룹에 대해서만 흐름을 추정한다.
     snapshot.flows = flow_estimator_.estimate(snapshot.groups, snapshot.cores);
