@@ -23,6 +23,44 @@
       }
     },
     {
+      "files": ["src/scene/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["*stream/*", "*/stream", "**/stream/**"],
+                "message": "scene/ reads only state/, never stream/ directly."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/visual/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              { "name": "react", "message": "visual/ is pure: no react, react-dom, three or zustand." },
+              { "name": "react-dom", "message": "visual/ is pure: no react, react-dom, three or zustand." },
+              { "name": "three", "message": "visual/ is pure: no react, react-dom, three or zustand." },
+              { "name": "zustand", "message": "visual/ is pure: no react, react-dom, three or zustand." }
+            ],
+            "patterns": [
+              {
+                "group": ["@react-three/*", "*snapshotStore*", "*stream/*", "**/stream/**"],
+                "message": "visual/ is pure: it may import types from state/interpolator and protocol/ only."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["src/state/interpolator.ts", "src/stream/SystemStream.ts"],
       "rules": {
         "no-restricted-imports": [
