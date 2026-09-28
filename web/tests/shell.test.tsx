@@ -140,6 +140,16 @@ describe('Shell', () => {
     expect(window.location.hash).toBe('#dashboard');
   });
 
+  it('toggles on a d key from a non-QWERTY layout', () => {
+    // AZERTY·Dvorak 에서는 d 가 다른 물리 키에 있다. event.code 는 KeyD 가 아니다.
+    render(<Shell />);
+    fireEvent.keyDown(window, { key: 'd', code: 'KeyE' });
+    act(() => {
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    expect(window.location.hash).toBe('#dashboard');
+  });
+
   it('ignores an auto-repeated D keydown', () => {
     render(<Shell />);
     fireEvent.keyDown(window, { key: 'd', code: 'KeyD', repeat: true });
@@ -212,6 +222,18 @@ describe('Shell scene error boundary', () => {
     expect(toggle).toBeInTheDocument();
 
     await user.click(toggle);
+    act(() => {
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    expect(window.location.hash).toBe('#dashboard');
+    expect(screen.getByText(/data check/)).toBeInTheDocument();
+  });
+
+  it('keeps the D key working after the scene failed', () => {
+    render(<Shell />);
+    expect(screen.getByText(/3D scene failed/)).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'd', code: 'KeyD' });
     act(() => {
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     });

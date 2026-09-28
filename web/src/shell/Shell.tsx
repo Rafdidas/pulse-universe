@@ -42,14 +42,15 @@ export function Shell() {
         return;
       }
       // 한글 IME 가 켜져 있으면 event.key 는 'ㅇ' 이나 조합 중 'Process' 로
-      // 읽혀 물리 키를 알 수 없다. event.code 는 자판 배열과 무관하므로
-      // 이것으로 맞춘다. 조합 중(isComposing)이거나 키를 누르고 있어 자동
-      // 반복(repeat)되는 입력은 무시한다 — 안 그러면 초당 30번씩 뷰가
+      // 읽혀 물리 키를 알 수 없다. 그래서 물리 키(event.code)로 맞춘다.
+      // 반대로 AZERTY·Dvorak 에서는 d 가 다른 물리 키에 있으므로 글자
+      // (event.key)도 받는다. 조합 중(isComposing)이거나 키를 누르고 있어
+      // 자동 반복(repeat)되는 입력은 무시한다 — 안 그러면 초당 30번씩 뷰가
       // 뒤집히며 WebGL 컨텍스트를 매번 새로 만든다.
       if (event.isComposing || event.repeat) {
         return;
       }
-      if (event.code === 'KeyD') {
+      if (event.code === 'KeyD' || event.key === 'd' || event.key === 'D') {
         toggle();
       }
     }
