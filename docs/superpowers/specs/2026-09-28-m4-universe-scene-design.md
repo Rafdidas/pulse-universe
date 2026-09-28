@@ -149,8 +149,12 @@ step(nodes: { key, radius }[], dt)
 3. 힘:
    - **충돌**: 두 노드 거리가 `rᵢ + rⱼ + 1.0` 보다 가까우면 겹친 만큼 강하게 밀어낸다.
    - **원거리 반발**: `k / d²`. 노드가 한 점에 뭉치지 않게 한다.
-   - **중심 인력**: `-g · (0.3 + rᵢ / 4) · pos`. 큰 천체가 가운데로 모인다.
-4. 속도에 감쇠를 곱한다. 감쇠는 `dt` 로 정규화해 프레임률과 무관하게 한다.
+   - **중심 인력**: `-g · (0.5 + rᵢ²) · pos`. 반지름의 제곱(대략 표면적)에 비례하므로 큰 천체가 가운데로 모인다.
+4. 속도에 감쇠를 곱한다.
+5. **고정 스텝**: 적분은 항상 1/60초 단위로 한다. 호출마다 들어온 `dt`(1/30초에서 자름, NaN·음수는 0)를 누적기에 더하고 1/60초씩 소비한다. 프레임 간격을 그대로 적분에 쓰면 같은 데이터라도 프레임률에 따라 다른 모양으로 수렴한다.
+6. **사전 수렴**: 빈 시뮬레이션에 처음 노드가 들어오면 그 자리에서 600 스텝(10초 분량)을 미리 돈다. 첫 화면이 한 점에서 퍼져 나오는 대신 이미 자리 잡은 모양으로 뜨고, 그 모양은 프레임 타이밍과 무관하다 — "새로고침해도 같은 모양"이 이것으로 보장된다.
+
+상수(`REPULSION 3`, `GRAVITY 0.05`, `COLLISION_STIFFNESS 8`, `DAMPING 0.9`/프레임)는 실제 픽스처 40개로 돌려 정했다. 10초 수렴 후 최소 여유 거리 0.69(겹침 없음), 큰 10개의 중심 거리 평균 7.3 대 작은 10개 11.4, 가장 먼 노드 14.6.
 
 부유는 시뮬레이션 밖에서 더한다. 노드가 그릴 때 `위치 + 노이즈 오프셋`(서로 다른 주기의 sin 합, 진폭 0.2, 주기 6~10초, 위상은 key 해시)을 쓴다. 시뮬레이션 상태에는 들어가지 않는다. 계약서 7.1절대로 위치는 보간 대상이 아니다.
 
@@ -161,8 +165,8 @@ step(nodes: { key, radius }[], dt)
 | 요소 | 선택 |
 |---|---|
 | 배경 | 단색 `#03040a` + drei `Stars` (절차 생성, 네트워크 없음) |
-| 카메라 | fov 50, 위치 `(0, 8, 38)`, drei `OrbitControls`, 느린 자동 회전. 조작하면 자동 회전을 멈춘다 |
-| 조명 | 중심 점광원 + 약한 주변광 |
+| 카메라 | fov 50, 위치 `(0, 10, 58)`, drei `OrbitControls`, 느린 자동 회전. 조작하면 자동 회전을 멈춘다 |
+| 조명 | 방향광(`(20, 30, 25)`, 1.1) + 약한 주변광(0.2). 중심 점광원은 가운데의 큰 천체 안에 묻혀 그 천체를 안쪽에서 비추므로 쓰지 않는다 |
 | 노드 | 구(`meshStandardMaterial`, emissive) + 헤일로 구(`meshBasicMaterial`, 가산 블렌딩, `depthWrite: false`) |
 | 호버 | 노드 포인터 이벤트로 호버 key를 장면 로컬 상태에 둔다. 툴팁 하나(`Html`)가 이름·메모리·CPU를 보여주며, 값은 `useFrame` 에서 DOM 텍스트를 직접 갱신한다 |
 | 대기 | 스냅샷이 없으면 별 배경만 그리고 "waiting for the first snapshot…" 오버레이를 띄운다 |
@@ -193,8 +197,11 @@ web/src/
     ProcessNode.tsx  구 + 헤일로, useFrame 에서 ref 갱신
     Tooltip.tsx
     sceneContext.ts
+    nodeList.ts      스토어 → 노드 id 문자열 배열 (useShallow 비교용)
   shell/
+    view.ts          해시 ↔ 화면 (순수)
     Shell.tsx        해시 전환, 토글, 배지
+    shell.css
 ```
 
 lint 경계(`.oxlintrc.json` 의 `no-restricted-imports` 오버라이드):
@@ -203,6 +210,10 @@ lint 경계(`.oxlintrc.json` 의 `no-restricted-imports` 오버라이드):
 - `src/scene/**` → `stream/` 금지 (대시보드와 같은 규칙)
 
 의존성: `three` 0.186, `@react-three/fiber` 9.8 (peer: React ≥19 <19.4 — 현재 19.2), `@react-three/drei` 10, `@types/three`. GSAP은 M5에서 추가한다.
+
+번들은 1.26 MB(gzip 349 KB) 단일 청크가 되어 Vite의 500 KB 경고를 넘는다. 엔진이 로컬 디스크에서 서빙하므로 문제가 아니며, `chunkSizeWarningLimit` 을 1600으로 올리고 이유를 주석으로 남긴다. 코드 분할은 M9에서 측정 후 판단한다.
+
+알려진 콘솔 경고: `THREE.Clock: This module has been deprecated` — R3F 9.8 내부가 three 0.186에서 폐기 예고된 `Clock` 을 쓴다. 우리 코드가 아니다.
 
 ## 10. 실패 동작
 
@@ -224,7 +235,8 @@ lint 경계(`.oxlintrc.json` 의 `no-restricted-imports` 오버라이드):
 | `layout` | 고정 입력으로 N 스텝 후 겹침 없음, 무게중심이 원점 근처, 큰 노드가 평균적으로 중심에 가까움, 같은 입력 → 같은 결과, 사라진 key 제거, 큰 `dt` 에도 발산 없음 |
 | `frameCache` | 실제 픽스처로 key 조회, `coreCount = cores.length` |
 | `hash` | 결정성, 범위 [0,1) |
-| `Shell` | jsdom에서 해시에 따라 대시보드/우주 선택 (Universe는 모킹) |
+| `Shell`, `view` | jsdom에서 해시에 따라 대시보드/우주 선택, 토글 버튼, `D` 키(수정키·입력 중 무시). Universe는 모킹 |
+| `nodeList` | 스냅샷 → id 배열, 빈 스냅샷의 같은 참조, id 왕복 |
 
 장면은 실제 엔진에 붙여 브라우저에서 눈으로 확인한다. 확인 항목:
 
