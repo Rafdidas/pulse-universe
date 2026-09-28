@@ -1,7 +1,9 @@
 # Pulse Universe — 프런트엔드
 
-Pulse Universe 검증 대시보드의 프런트엔드다. C++ 엔진이 WebSocket 으로 1Hz 로
-보내는 JSON 스냅샷을 받아 실시간으로 보여준다.
+Pulse Universe 의 프런트엔드다. C++ 엔진이 WebSocket 으로 1Hz 로 보내는 JSON
+스냅샷을 받아, 프로세스 그룹을 천체로 그리는 3D 우주와 숫자 검증 대시보드로
+보여준다. 기본 화면은 우주이고 `D` 키나 우측 상단 버튼(`#dashboard`)으로
+대시보드와 오간다.
 
 ## 레이어 구조
 
@@ -12,13 +14,18 @@ stream/useSystemStream.ts stream/ 을 React 에 연결하는 유일한 다리, �
 state/snapshotStore.ts    Zustand: previous, current, arrivedAt, intervalMs, status, lifecycleLog
 state/interpolator.ts     sample(input, now) — 순수 함수, React 도 Zustand 도 모른다
 state/useInterpolated.ts  대시보드를 위해 100ms 마다 sample() 을 호출한다
+visual/                   순수 TS: 크기·맥박·발광·색 매핑, 배치 시뮬레이션, 프레임 캐시
+scene/                    R3F: 프레임당 sample() 한 번 → FrameCache → 노드가 key 로 읽는다
 dashboard/                React 컴포넌트; state/ 만 읽는다
-main.tsx                  스트림을 시작하는 루트 래퍼, App 을 렌더링한다
+shell/                    URL 해시로 우주와 대시보드 중 하나만 마운트한다
+main.tsx                  스트림을 시작하는 루트 래퍼, Shell 을 렌더링한다
 ```
 
-`dashboard/` 는 `stream/` 을 직접 참조하지 않는다 — 스트림 상태는 항상
-`state/` 를 거쳐서만 들어온다. 이 경계는 `.oxlintrc.json` 의
-`no-restricted-imports` 규칙으로도 강제된다.
+`dashboard/` 와 `scene/` 은 `stream/` 을 직접 참조하지 않는다 — 스트림 상태는
+항상 `state/` 를 거쳐서만 들어온다. `visual/` 은 React·three·Zustand 를 모르는
+순수 모듈이다. 이 경계들은 `.oxlintrc.json` 의 `no-restricted-imports` 규칙으로
+강제된다. 장면의 프레임 값(보간된 CPU·메모리, 위치, 맥박)은 React 상태를 거치지
+않고 `useFrame` 안에서 ref 로 바뀐다.
 
 두 가지 규칙은 어디서나 지킨다: `cpu_pct` 값은 `number | null` 이고 **`null`
 (모름)은 절대 `0`(측정된 0)으로 뭉개지지 않는다**. 그리고 프런트엔드는 엔진에
@@ -56,9 +63,17 @@ pulse-engine --serve --web-root ..\web\dist
 
 ```
 npm test
+npm run typecheck
 npm run lint
 ```
 
-`npm test` 는 `tests/schema.test.ts` 는 `node` 환경에서, 나머지는 `jsdom`
-환경에서 실행한다 (`vite.config.ts` 의 `projects` 설정). 출력에 React key
-경고나 `act()` 경고가 남으면 안 된다.
+`npm test` 는 `tests/schema.test.ts` 와 `tests/visual/` 을 `node` 환경에서,
+나머지는 `jsdom` 환경에서 실행한다 (`vite.config.ts` 의 `projects` 설정).
+`visual/` 의 테스트가 DOM 없이 도는 것 자체가 그 모듈이 순수하다는 증거다.
+출력에 React key 경고나 `act()` 경고가 남으면 안 된다.
+
+`npm run typecheck` 는 앱과 테스트 파일을 모두 타입체크한다 (`tsconfig.test.json`).
+
+3D 장면 자체는 자동 테스트 대상이 아니다. 엔진에 붙여 브라우저에서 확인한다.
+콘솔의 `THREE.Clock: This module has been deprecated` 경고는 R3F 내부에서
+나오는 것이다.
