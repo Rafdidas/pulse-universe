@@ -11,6 +11,8 @@ import { useSceneContext } from './sceneContext';
 const SALT_PHASE = 2;
 // 위성은 부모 색 계열에서 조금 더 밝게 그린다.
 const SATELLITE_LIGHTNESS = 0.68;
+// 드래그 끝에 버튼을 뗀 것은 클릭이 아니다 (px). ProcessNode 의 CLICK_SLOP 과 동일한 값.
+const CLICK_SLOP = 2;
 
 interface Props {
   pid: number;
@@ -66,6 +68,14 @@ export function SatelliteNode({ pid, account }: Props) {
           current?.kind === 'satellite' && current.pid === pid ? null : current,
         )
       }
+      onClick={(event) => {
+        if (event.delta > CLICK_SLOP) {
+          return;
+        }
+        // 초점이 잡히면 위성이 부모 천체 앞을 지난다. 여기서 막지 않으면 클릭이
+        // 뒤쪽 ProcessNode 로 새어 들어가 초점을 꺼버린다.
+        event.stopPropagation();
+      }}
     >
       <sphereGeometry args={[1, 16, 16]} />
       <meshStandardMaterial
