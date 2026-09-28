@@ -48,7 +48,8 @@
               { "name": "react", "message": "visual/ is pure: no react, react-dom, three or zustand." },
               { "name": "react-dom", "message": "visual/ is pure: no react, react-dom, three or zustand." },
               { "name": "three", "message": "visual/ is pure: no react, react-dom, three or zustand." },
-              { "name": "zustand", "message": "visual/ is pure: no react, react-dom, three or zustand." }
+              { "name": "zustand", "message": "visual/ is pure: no react, react-dom, three or zustand." },
+              { "name": "gsap", "message": "visual/ is pure: transitions are computed, not tweened. GSAP lives in scene/." }
             ],
             "patterns": [
               {
