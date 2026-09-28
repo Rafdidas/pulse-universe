@@ -3408,7 +3408,7 @@ describe('FocusPanel', () => {
     expect(screen.getByText('whale.exe', { selector: 'strong' })).toBeInTheDocument();
     expect(screen.getByText('2,755 MB')).toBeInTheDocument();
     expect(screen.getByText('1.5%')).toBeInTheDocument();
-    const rows = screen.getAllByRole('row').slice(1);
+    const rows = screen.getAllByRole<HTMLTableRowElement>('row').slice(1);
     expect(rows.map((row) => row.cells[1].textContent)).toEqual(['11008', '22180']);
   });
 
@@ -3417,7 +3417,7 @@ describe('FocusPanel', () => {
     render(<FocusPanel />);
     tick();
 
-    const rows = screen.getAllByRole('row').slice(1);
+    const rows = screen.getAllByRole<HTMLTableRowElement>('row').slice(1);
     expect(rows[0].cells[3].textContent).toBe('0.0');
     expect(rows[1].cells[3].textContent).toBe('-');
   });
