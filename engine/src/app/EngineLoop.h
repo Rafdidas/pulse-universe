@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <string>
 
@@ -41,8 +42,8 @@ public:
     const std::string& error() const;
 
 private:
-    // 정지 요청에 빨리 반응하도록 주기를 잘게 쪼개 잔다.
-    void sleepInterval();
+    // deadline 까지 잔다. 정지 요청에 빨리 반응하도록 잘게 쪼개 잔다.
+    void sleepUntil(std::chrono::steady_clock::time_point deadline);
 
     ISystemReader& reader_;
     EngineLoopConfig cfg_;
