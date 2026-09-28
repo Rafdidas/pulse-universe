@@ -1,0 +1,57 @@
+.universe {
+  position: fixed;
+  inset: 0;
+}
+
+.universe-message {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  color: #8f9aa8;
+  pointer-events: none;
+}
+
+.universe-message a {
+  pointer-events: auto;
+  color: #6ee7a8;
+  margin-left: 0.5ch;
+}
+
+.universe-tooltip {
+  padding: 6px 9px;
+  background: rgba(20, 24, 29, 0.85);
+  border: 1px solid #2a313a;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.universe-tooltip-name {
+  color: #e8edf3;
+}
+
+.shell-badge {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  right: 160px;
+}
+
+.shell-toggle {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  padding: 6px 12px;
+  font: inherit;
+  color: #d7dde5;
+  background: #14181d;
+  border: 1px solid #2a313a;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.shell-toggle:hover {
+  border-color: #6ee7a8;
+}
