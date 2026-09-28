@@ -109,6 +109,12 @@ TEST_CASE("runServe reports a sampling failure", "[serve]") {
     REQUIRE(result.message.find("sampling failed") != std::string::npos);
 }
 
+// 서버 스레드는 std::jthread 로 둔다. 클라이언트 접속이나 단언이 join 전에
+// 예외를 던지면, join 되지 않은 std::thread 가 소멸하면서 std::terminate()
+// → abort() 로 바이너리 전체가 죽는다 — 실패를 보고하는 대신 Debug CRT
+// 대화상자만 남는다. jthread 는 소멸 시 join 하므로 예외가 정상적으로
+// Catch2 까지 올라간다. runServe 는 모두 유한한 iterations 로 부르므로
+// join 은 항상 끝난다.
 TEST_CASE("the hello message carries the reader's host info", "[serve]") {
     FakeSystemReader reader(someSamples(), 6);
     ServeConfig cfg;
@@ -119,7 +125,7 @@ TEST_CASE("the hello message carries the reader's host info", "[serve]") {
     std::atomic<unsigned short> port{0};
     ServeResult result;
 
-    std::thread server_thread([&] {
+    std::jthread server_thread([&] {
         result = runServe(reader, cfg,
                           [&](unsigned short p) { port.store(p); });
     });
@@ -146,7 +152,7 @@ namespace {
 json::value receiveHello(FakeSystemReader& reader, const ServeConfig& cfg) {
     std::atomic<unsigned short> port{0};
 
-    std::thread server_thread([&] {
+    std::jthread server_thread([&] {
         runServe(reader, cfg, [&](unsigned short p) { port.store(p); });
     });
 
@@ -206,7 +212,7 @@ TEST_CASE("a snapshot follows the hello message", "[serve]") {
 
     std::atomic<unsigned short> port{0};
 
-    std::thread server_thread([&] {
+    std::jthread server_thread([&] {
         runServe(reader, cfg, [&](unsigned short p) { port.store(p); });
     });
 
@@ -223,4 +229,26 @@ TEST_CASE("a snapshot follows the hello message", "[serve]") {
 
     client.close();
     server_thread.join();
+}
+
+TEST_CASE("a client arriving after runServe has finished is refused cleanly", "[serve]") {
+    // runServe 는 iterations 를 채우면 서버를 닫고 돌아온다. 그 뒤에 온
+    // 클라이언트가 거절되는 것은 경쟁 조건이 아니라 기대 동작이다.
+    FakeSystemReader reader(someSamples(), 4);
+    ServeConfig cfg;
+    cfg.iterations = 1;
+    cfg.interval_ms = 1;
+    cfg.server.port = 0;
+
+    std::atomic<unsigned short> port{0};
+    ServeResult result;
+    {
+        std::jthread server_thread([&] {
+            result = runServe(reader, cfg, [&](unsigned short p) { port.store(p); });
+        });
+    }  // runServe 가 스스로 끝날 때까지 기다린다
+
+    REQUIRE(result.exit_code == 0);
+    REQUIRE(port.load() != 0);
+    REQUIRE_THROWS(TestClient(port.load()));
 }
