@@ -4,6 +4,7 @@ import {
   COLD,
   advanceNoiseOffset,
   HOT,
+  NOISE_PERIOD,
   WARM,
   coreColor,
   coreHsl,
@@ -106,6 +107,20 @@ describe('coreMapping', () => {
     expect(advanceNoiseOffset(10, 1, 0.5)).toBeCloseTo(11, 9);
     expect(advanceNoiseOffset(10, 0, 2)).toBeCloseTo(10.5, 9);
     expect(advanceNoiseOffset(10, 1, -1)).toBe(10);
+  });
+
+  it('wraps the noise offset at NOISE_PERIOD so it stays inside [0, NOISE_PERIOD)', () => {
+    // 부하 0 의 속도는 0.25 이므로 dt 2 초면 정확히 0.5 만큼 나아간다.
+    expect(advanceNoiseOffset(NOISE_PERIOD - 0.1, 0, 2)).toBeCloseTo(
+      NOISE_PERIOD - 0.1 + 0.5 - NOISE_PERIOD,
+      9,
+    );
+    let offset = 0;
+    for (let i = 0; i < 5000; i += 1) {
+      offset = advanceNoiseOffset(offset, 1, 0.1);
+      expect(offset).toBeGreaterThanOrEqual(0);
+      expect(offset).toBeLessThan(NOISE_PERIOD);
+    }
   });
 
   it('keeps an idle core nearly smooth', () => {

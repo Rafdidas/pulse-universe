@@ -22,10 +22,16 @@ export function noiseSpeed(load: number): number {
   return 0.25 + 1.75 * clamp01(load);
 }
 
+// 셰이더의 Ashima 3D 심플렉스 노이즈는 입력에 vec3(t) 를 더할 때 t = 144.5 에서
+// 정확히 주기적이다. 스큐가 격자 셀 인덱스를 2t = 289 만큼 옮기는데 289 가 mod289 의
+// 주기이고, 언스큐 항은 상쇄된다. 그래서 오프셋을 144.5 에서 감아도 이음매가 없다.
+export const NOISE_PERIOD = 144.5;
+
 // 셰이더 노이즈의 시간 오프셋을 dt 만큼 진행한다. 누적한다 — 시각 × speed(load) 로
 // 넘기면 부하가 바뀌는 순간 오프셋이 (시각 × 속도 변화)만큼 튀어 Orb 가 떨린다.
+// 값은 NOISE_PERIOD 에서 감는다 — float32 uniform 이 며칠 뒤에도 정밀도를 잃지 않게.
 export function advanceNoiseOffset(offset: number, load: number, dtSec: number): number {
-  return offset + noiseSpeed(load) * Math.max(0, dtSec);
+  return (offset + noiseSpeed(load) * Math.max(0, dtSec)) % NOISE_PERIOD;
 }
 
 // 5.3 색. 부하 0 → 0.5 → 1 을 세 색으로 잇는다. RGB 로 섞으면 파랑과 주황 사이가
