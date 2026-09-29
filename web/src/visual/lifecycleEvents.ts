@@ -31,11 +31,17 @@ function membershipOf(snapshot: SnapshotLike): Map<number, Membership> {
   return map;
 }
 
+// 루트가 생성된 뒤 이 스냅샷 수 안에 목록에 처음 나타난 그룹까지 "생성" 으로 본다.
+// 새 창은 로딩 중에 메모리가 작아 상위 40 에 몇 초 늦게 들어오기도 한다.
+export const SPAWN_WINDOW_SNAPSHOTS = 5;
+
 export class LifecycleConsumer {
   private lastSeq: number | null = null;
   // 직전에 소비한 스냅샷의 pid → 그룹. 종료된 프로세스는 현재 스냅샷에 없으므로
   // 어느 그룹이었는지는 직전 스냅샷에서 찾아야 한다.
   private previous = new Map<number, Membership>();
+  // 최근 생성된 pid → 그것을 spawned 로 알린 스냅샷의 seq. 목록 밖 pid 도 기록한다.
+  private recentSpawns = new Map<number, number>();
 
   consume(snapshot: SnapshotLike | null): LifecycleEvent[] {
     if (snapshot === null) {
@@ -54,10 +60,27 @@ export class LifecycleConsumer {
     // 앱을 연 순간 이미 있던 것들을 "생성" 으로 연출하지도 않는다.
     if (!isFirst) {
       for (const spawned of snapshot.lifecycle.spawned) {
+        this.recentSpawns.set(spawned.pid, snapshot.seq);
+      }
+      for (const [pid, seq] of this.recentSpawns) {
+        if (seq < snapshot.seq - SPAWN_WINDOW_SNAPSHOTS) {
+          this.recentSpawns.delete(pid);
+        }
+      }
+
+      // 그룹 key 가 이번에 처음 목록에 나타났고, 그 루트가 최근 생성됐으면 생성이다.
+      const previousKeys = new Set<string>();
+      for (const member of this.previous.values()) {
+        previousKeys.add(member.key);
+      }
+      for (const group of snapshot.groups) {
+        if (!previousKeys.has(group.key) && this.recentSpawns.has(group.root_pid)) {
+          events.push({ kind: 'group-born', key: group.key, pid: group.root_pid });
+        }
+      }
+      for (const spawned of snapshot.lifecycle.spawned) {
         const member = current.get(spawned.pid);
-        if (member?.isRoot) {
-          events.push({ kind: 'group-born', key: member.key, pid: spawned.pid });
-        } else if (member !== undefined) {
+        if (member !== undefined && !member.isRoot) {
           events.push({ kind: 'child-born', key: member.key, pid: spawned.pid });
         }
         // 목록 밖 프로세스의 생성은 연출하지 않는다.
@@ -83,5 +106,6 @@ export class LifecycleConsumer {
   reset(): void {
     this.lastSeq = null;
     this.previous = new Map();
+    this.recentSpawns = new Map();
   }
 }

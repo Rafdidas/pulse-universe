@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ProcessGroup } from '../../src/protocol/schema';
-import { LifecycleConsumer } from '../../src/visual/lifecycleEvents';
+import { LifecycleConsumer, SPAWN_WINDOW_SNAPSHOTS } from '../../src/visual/lifecycleEvents';
 
 function group(name: string, rootPid: number, childPids: number[] = []): ProcessGroup {
   return {
@@ -104,5 +104,64 @@ describe('LifecycleConsumer', () => {
     const consumer = primed([group('a.exe', 10, [11])]);
     consumer.reset();
     expect(consumer.consume(snap(2, [group('a.exe', 10)], [], [11]))).toEqual([]);
+  });
+
+  describe('recent-spawn window', () => {
+    it('is 5 snapshots', () => {
+      expect(SPAWN_WINDOW_SNAPSHOTS).toBe(5);
+    });
+
+    it('births a group that enters the list within the window after its spawn', () => {
+      const a = group('a.exe', 10);
+      const consumer = primed([a]);
+      expect(consumer.consume(snap(2, [a], [20]))).toEqual([]);
+      expect(consumer.consume(snap(3, [a]))).toEqual([]);
+      expect(consumer.consume(snap(4, [a]))).toEqual([]);
+      expect(consumer.consume(snap(5, [a, group('b.exe', 20)]))).toEqual([
+        { kind: 'group-born', key: 'b.exe:20', pid: 20 },
+      ]);
+      expect(consumer.consume(snap(6, [a, group('b.exe', 20)]))).toEqual([]);
+    });
+
+    it('does not birth a group that enters after the window', () => {
+      const a = group('a.exe', 10);
+      const consumer = primed([a]);
+      consumer.consume(snap(2, [a], [20]));
+      for (let seq = 3; seq <= 7; seq += 1) {
+        consumer.consume(snap(seq, [a]));
+      }
+      expect(consumer.consume(snap(8, [a, group('b.exe', 20)]))).toEqual([]);
+    });
+
+    it('births once when spawned and listed in the same snapshot', () => {
+      const a = group('a.exe', 10);
+      const b = group('b.exe', 20);
+      const consumer = primed([a]);
+      expect(consumer.consume(snap(2, [a, b], [20]))).toEqual([
+        { kind: 'group-born', key: 'b.exe:20', pid: 20 },
+      ]);
+      expect(consumer.consume(snap(3, [a, b]))).toEqual([]);
+    });
+
+    it('never births a key that was already listed', () => {
+      const a = group('a.exe', 10);
+      const consumer = primed([a]);
+      expect(consumer.consume(snap(2, [a], [10]))).toEqual([]);
+    });
+
+    it('forgets spawns after reset and after a null snapshot', () => {
+      const a = group('a.exe', 10);
+      const b = group('b.exe', 20);
+      for (const clear of [
+        (c: LifecycleConsumer) => c.reset(),
+        (c: LifecycleConsumer) => c.consume(null),
+      ]) {
+        const consumer = primed([a]);
+        consumer.consume(snap(2, [a], [20]));
+        clear(consumer);
+        consumer.consume(snap(3, [a]));
+        expect(consumer.consume(snap(4, [a, b]))).toEqual([]);
+      }
+    });
   });
 });
