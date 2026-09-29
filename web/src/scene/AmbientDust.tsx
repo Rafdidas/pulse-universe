@@ -1,5 +1,5 @@
 import { useFrame } from '@react-three/fiber';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { BufferAttribute, BufferGeometry, type Points } from 'three';
 
 import { AMBIENT_MAX, ambientCount, ambientPoint } from '../visual/ambient';
@@ -30,6 +30,8 @@ export function AmbientDust() {
     g.setAttribute('position', new BufferAttribute(positions, 3));
     return g;
   }, []);
+
+  useEffect(() => () => geometry.dispose(), [geometry]);
 
   useFrame(() => {
     if (points.current === null) {

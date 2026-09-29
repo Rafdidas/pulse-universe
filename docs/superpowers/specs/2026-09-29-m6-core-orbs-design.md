@@ -68,7 +68,7 @@ corePosition(index, n) = (r·cos θ, 0, r·sin θ),  θ = 2π·index / n
 
 ### 5.2 일그러짐
 
-정점을 법선 방향으로 `amplitude × snoise(normal × 1.8 + offset)` 만큼 민다. `offset` 은 JS 에서 `offset += speed(load) × dt` 로 **누적**한다(`advanceNoiseOffset`). `시각 × speed(load)` 로 넘기면 `performance.now()` 가 수천 초일 때 부하가 조금만 바뀌어도 오프셋이 크게 튀어 Orb 가 떤다 — M4 맥박 위상과 같은 이유다.
+정점을 법선 방향으로 `amplitude × snoise(normal × 1.8 + offset)` 만큼 민다. `offset` 은 JS 에서 `offset += speed(load) × dt` 로 **누적**한다(`advanceNoiseOffset`). `시각 × speed(load)` 로 넘기면 `performance.now()` 가 수천 초일 때 부하가 조금만 바뀌어도 오프셋이 크게 튀어 Orb 가 떤다 — M4 맥박 위상과 같은 이유다. 누적값은 float32 uniform 이라 오래 두면 정밀도를 잃으므로 `NOISE_PERIOD = 144.5` 에서 감는다 — Ashima 심플렉스 노이즈는 입력에 vec3(144.5) 를 더하면 정확히 주기적이라(스큐가 격자 인덱스를 289 = mod289 주기만큼 옮긴다) 이음매가 없다.
 
 ```
 amplitude(load) = 0.04 + 0.28 × load²     대기 5%: 0.041, 50%: 0.11, 90%: 0.27
@@ -100,7 +100,7 @@ Bloom 은 M8 이다.
 
 ### 5.5 셰이더 uniform
 
-`uOffset`(누적 노이즈 오프셋), `uAmplitude`, `uColor`(vec3), `uRim`, `uOpacity`(Focus 로 어두워질 때). 매 프레임 JS 에서 값을 넣고 셰이더는 계산만 한다 — 매핑은 전부 5.1~5.4 의 순수 함수다.
+`uOffset`(누적 노이즈 오프셋, 0 ~ 144.5 에서 감김), `uAmplitude`, `uColor`(vec3), `uRim`, `uOpacity`(Focus 로 어두워질 때). 매 프레임 JS 에서 값을 넣고 셰이더는 계산만 한다 — 매핑은 전부 5.1~5.4 의 순수 함수다.
 
 ## 6. 코어 불꽃 (`visual/coreSparks.ts`, `scene/CoreSparks.tsx`)
 
@@ -127,7 +127,7 @@ ambientPoint(i) = key 해시로 정한 방향 × 반지름(40 ~ 90)
 
 ## 8. 상호작용
 
-- **호버**: 코어 Orb 에 올리면 툴팁 "CPU 7 · 43.2%". `Hovered` 에 `{ kind: 'core'; index: number }` 를 더한다. 표시 값은 `formatPct` (대시보드와 같다).
+- **호버**: 코어 Orb 에 올리면 툴팁은 두 줄 — "CPU 7" / "43.2%" — 로, 그룹·위성 툴팁과 같다. `Hovered` 에 `{ kind: 'core'; index: number }` 를 더한다. 표시 값은 `formatPct` (대시보드와 같다).
 - **클릭**: 드래그가 아닌 클릭(`delta ≤ CLICK_SLOP`)이면 전파만 막는다. `CLICK_SLOP` 은 `scene/interaction.ts` 한 곳으로 옮기고 ProcessNode·SatelliteNode·CoreOrb 가 함께 쓴다(M5 이월).
 - **Focus 중**: Orb·헤일로·불꽃이 다른 천체와 같이 `1 − 0.75 × weight` 로 어두워진다.
 

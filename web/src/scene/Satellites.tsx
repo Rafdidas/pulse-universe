@@ -85,7 +85,8 @@ export function Satellites() {
     }
 
     // 위성 목록은 추적기 version 이 바뀔 때만 다시 만든다. 주인이 바뀌면 tracker.reset()
-    // 이 version 을 올리므로 계정이 바뀌는 경우도 여기서 잡힌다.
+    // 이 (추적기가 비어 있지 않았다면) version 을 올려 계정 변경도 여기서 잡힌다.
+    // 비어 있던 추적기는 version 이 그대로지만 그릴 위성이 없으니 문제없다.
     if (tracker.version !== shownVersion.current) {
       shownVersion.current = tracker.version;
       const pids = tracker.entries().map((satellite) => satellite.value.pid);

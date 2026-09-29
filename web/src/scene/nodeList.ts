@@ -1,8 +1,8 @@
 import type { ProcessGroup } from '../protocol/schema';
 
-// 장면이 React 로 다시 그려야 하는 때는 그려야 할 key 집합이 바뀔 때뿐이다.
-// 존재 추적기의 항목을 문자열 id 배열로 만들어 두고, 이어 붙인 서명이 바뀔
-// 때만 React 상태를 갱신한다. account 는 색을 정하므로 함께 싣는다.
+// 이 파일은 노드 id `account|key` 를 만들고 되읽기만 한다. 장면(SceneRoot)은
+// PresenceTracker.version 이 바뀔 때만 목록을 다시 만들어 React 상태를 갱신한다.
+// account 는 색을 정하므로 id 에 함께 싣는다.
 // account 에는 '|' 가 없으므로 첫 '|' 에서 자르면 key 에 '|' 가 있어도 안전하다.
 export interface NodeSpec {
   key: string;

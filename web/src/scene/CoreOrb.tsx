@@ -1,15 +1,17 @@
 import { useFrame } from '@react-three/fiber';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   AdditiveBlending,
   Color,
   type Mesh,
   type MeshBasicMaterial,
+  SRGBColorSpace,
   type ShaderMaterial,
 } from 'three';
 
 import {
   CORE_HALO_SCALE,
+  NOISE_PERIOD,
   advanceNoiseOffset,
   coreColor,
   coreHaloOpacity,
@@ -36,7 +38,8 @@ export function CoreOrb({ index, count }: Props) {
   const material = useRef<ShaderMaterial>(null);
   const halo = useRef<Mesh>(null);
   const haloMaterial = useRef<MeshBasicMaterial>(null);
-  const noiseOffset = useRef(index * 7.3);
+  // 초기 오프셋도 노이즈 주기 안에 둔다 (advanceNoiseOffset 참조).
+  const noiseOffset = useRef((index * 7.3) % NOISE_PERIOD);
 
   const position = useMemo(() => corePosition(index, count), [index, count]);
   // 재질마다 제 uniform 객체를 가진다. 같은 셰이더 프로그램을 28 개가 나눠 쓴다.
@@ -49,6 +52,16 @@ export function CoreOrb({ index, count }: Props) {
       uOpacity: { value: 1 },
     }),
     [],
+  );
+
+  // R3F 는 언마운트된 메시를 onPointerOut 없이 호버 목록에서 뺀다. 코어 수가 줄거나
+  // 스토어가 비면 호버가 남아 툴팁이 엉뚱한 곳에서 다시 뜨므로 정리 때 직접 푼다.
+  useEffect(
+    () => () =>
+      setHovered((current) =>
+        current?.kind === 'core' && current.index === index ? null : current,
+      ),
+    [index, setHovered],
   );
 
   useFrame(() => {
@@ -85,8 +98,17 @@ export function CoreOrb({ index, count }: Props) {
     (u.uColor.value as Color).setRGB(r, g, b);
     u.uRim.value = rimIntensity(load) * dim;
     u.uOpacity.value = dim;
+    // 어둡지 않을 때는 불투명 패스에 둔다. 불투명 패스가 깊이를 먼저 써야 불꽃·먼지가
+    // 깊이 검사로 Orb 뒤에서만 가려진다 (투명 패스에서는 정렬 순서에 따라 Orb 가 덮어쓴다).
+    const transparent = dim < 1;
+    if (material.current.transparent !== transparent) {
+      material.current.transparent = transparent;
+      material.current.depthWrite = !transparent;
+      material.current.needsUpdate = true;
+    }
 
-    haloMaterial.current.color.setRGB(r, g, b);
+    // coreColor 는 sRGB 값이다. 본체 셰이더는 그대로 보여 주므로 후광도 sRGB 로 읽어야 색이 맞는다.
+    haloMaterial.current.color.setRGB(r, g, b, SRGBColorSpace);
     haloMaterial.current.opacity = coreHaloOpacity(load) * dim;
   });
 
@@ -117,7 +139,6 @@ export function CoreOrb({ index, count }: Props) {
           vertexShader={coreVertexShader}
           fragmentShader={coreFragmentShader}
           uniforms={uniforms}
-          transparent
         />
       </mesh>
       <mesh ref={halo} visible={false} raycast={() => null}>
