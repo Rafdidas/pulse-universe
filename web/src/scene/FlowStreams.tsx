@@ -47,6 +47,8 @@ export function FlowStreams() {
   const tracker = useMemo(() => new FlowTracker(), []);
   // 선마다의 흐름 위상. 누적한다 (advanceFlowPhase 참조).
   const phases = useRef(new Map<string, number>());
+  // 이번 프레임에 남아 있는 선의 key. 위상 정리에 쓴다 — 프레임마다 비우고 다시 채운다.
+  const edgeKeys = useRef(new Set<string>());
 
   const lineGeometry = useMemo(() => {
     const g = new BufferGeometry();
@@ -84,8 +86,12 @@ export function FlowStreams() {
 
     const edges = tracker.edges();
     // 추적기에서 사라진 선의 위상을 버린다.
+    edgeKeys.current.clear();
+    for (const edge of edges) {
+      edgeKeys.current.add(edge.key);
+    }
     for (const key of phases.current.keys()) {
-      if (!edges.some((edge) => edge.key === key)) {
+      if (!edgeKeys.current.has(key)) {
         phases.current.delete(key);
       }
     }

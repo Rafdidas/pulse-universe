@@ -61,7 +61,8 @@ export class FlowTracker {
       }
     }
 
-    for (const edge of [...this.items.values()]) {
+    // Map 은 순회 중 삭제해도 안전하다. 복사하지 않고 그대로 돈다.
+    for (const edge of this.items.values()) {
       // 그 천체가 더 이상 그려지지 않는다. 선도 즉시 지운다.
       if (!liveGroups.has(edge.group)) {
         this.items.delete(edge.key);
