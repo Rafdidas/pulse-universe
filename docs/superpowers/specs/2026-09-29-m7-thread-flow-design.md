@@ -92,7 +92,7 @@ point(t) = (1−t)²·from + 2(1−t)t·control + t²·to
 
 - 공유 `LineSegments` 하나. 선마다 `SEGMENTS = 24` 구간(정점 48개). 버퍼는 `MAX_EDGES × 48` 정점.
 - 정점 색: 그룹 색(`colorFor(account, key)`)에서 코어 열 색(`coreColor(load)`)으로 `t` 에 따라 섞는다. 밝기는 색에 곱한다(가산 블렌딩).
-- 선 밝기: `lineAlpha = clarity(source) × (0.25 + 1.6 × strength) × dim × highlight`, 1 에서 자른다.
+- 선 밝기: `lineAlpha = clarity(source) × intensity × (0.25 + 1.6 × weight) × dim × highlight`, 1 에서 자른다.
   - `clarity(estimated) = 0.55`, `clarity(measured) = 1.0`
 - 색은 sRGB → 선형으로 바꿔 넣는다 (M6 불꽃과 같다).
 - `raycast` 없음, `frustumCulled = false`, `depthWrite = false`.

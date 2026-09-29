@@ -109,10 +109,6 @@ export function SceneRoot() {
   );
   const consumer = useMemo(() => new LifecycleConsumer(), []);
 
-  // 호버는 React 상태다. flow 강조가 프레임 루프에서 읽을 수 있게 비춘다.
-  useEffect(() => {
-    context.hover.set(hovered);
-  }, [context, hovered]);
   const pool = useMemo(() => new BurstPool(), []);
 
   useFrame(() => {
@@ -198,6 +194,12 @@ export function SceneRoot() {
   // 스스로 숨는다.
   const liveHovered =
     hovered !== null && (hovered.kind !== 'group' || keys.includes(hovered.key)) ? hovered : null;
+
+  // 호버는 React 상태다. flow 강조가 프레임 루프에서 읽을 수 있게, 아직 마운트된
+  // (살아 있는) 호버만 비춘다.
+  useEffect(() => {
+    context.hover.set(liveHovered);
+  }, [context, liveHovered]);
 
   return (
     <SceneContext.Provider value={context}>

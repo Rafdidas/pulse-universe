@@ -77,10 +77,11 @@ export class FlowTracker {
       }
     }
 
-    // 넘치면 가장 약한 선부터 버린다.
+    // 넘치면 잔광 중인 선부터, 그 안에서 가장 약한 선부터 버린다.
+    // (막 생긴 선은 세기가 작아 곧바로 버려지는 일을 막는다.)
     if (this.items.size > MAX_EDGES) {
       const weakest = [...this.items.values()]
-        .sort((a, b) => edgeStrength(a) - edgeStrength(b))
+        .sort((a, b) => Number(a.present) - Number(b.present) || edgeStrength(a) - edgeStrength(b))
         .slice(0, this.items.size - MAX_EDGES);
       for (const edge of weakest) {
         this.items.delete(edge.key);

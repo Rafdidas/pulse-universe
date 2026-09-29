@@ -92,6 +92,25 @@ describe('FlowTracker', () => {
     expect(edge(tracker, 'g10.exe:10', 0)).toBeDefined();
   });
 
+  it('evicts afterglowing edges before a fresh present edge', () => {
+    const tracker = new FlowTracker();
+    const groups = new Set<string>();
+    const strong: Flow[] = [];
+    for (let i = 0; i < MAX_EDGES; i += 1) {
+      groups.add(`g${i}.exe:${i}`);
+      strong.push(flow(`g${i}.exe:${i}`, 0, 0.9));
+    }
+    tracker.update(strong, groups, FADE_IN_SEC);
+    // 모두 사라져 잔광 중이지만 아직 세다.
+    tracker.update([], groups, 0.01);
+    expect(tracker.size).toBe(MAX_EDGES);
+
+    groups.add('fresh.exe:999');
+    tracker.update([flow('fresh.exe:999', 1, 0.05)], groups, 0.01);
+    expect(edge(tracker, 'fresh.exe:999', 1)?.present).toBe(true);
+    expect(tracker.size).toBe(MAX_EDGES);
+  });
+
   it('ends the afterglow in one step after a long pause (tab return)', () => {
     const tracker = new FlowTracker();
     tracker.update([flow('a.exe:1', 3)], LIVE, FADE_IN_SEC);

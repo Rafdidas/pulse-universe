@@ -135,7 +135,7 @@ export function FlowStreams() {
 
       const strength = edgeStrength(edge);
       const shade = dimFor(focus, edge.group) * highlightFor(hovered, edge, coreIndex);
-      const lineAlpha = Math.min(1, CLARITY[edge.source] * (0.25 + 1.6 * strength)) * shade;
+      const lineAlpha = Math.min(1, CLARITY[edge.source] * edge.intensity * (0.25 + 1.6 * edge.weight)) * shade;
 
       for (let s = 0; s < SEGMENTS; s += 1) {
         const t0 = s / SEGMENTS;
