@@ -88,7 +88,7 @@ point(t) = (1−t)²·from + 2(1−t)t·control + t²·to
 
 ## 7. 그리기
 
-### 7.1 선 (`scene/FlowLines.tsx`)
+### 7.1 선 (`scene/FlowStreams.tsx`)
 
 - 공유 `LineSegments` 하나. 선마다 `SEGMENTS = 24` 구간(정점 48개). 버퍼는 `MAX_EDGES × 48` 정점.
 - 정점 색: 그룹 색(`colorFor(account, key)`)에서 코어 열 색(`coreColor(load)`)으로 `t` 에 따라 섞는다. 밝기는 색에 곱한다(가산 블렌딩).
@@ -97,7 +97,7 @@ point(t) = (1−t)²·from + 2(1−t)t·control + t²·to
 - 색은 sRGB → 선형으로 바꿔 넣는다 (M6 불꽃과 같다).
 - `raycast` 없음, `frustumCulled = false`, `depthWrite = false`.
 
-### 7.2 흐르는 입자 (`scene/FlowParticles.tsx`, `visual/flowParticles.ts`)
+### 7.2 흐르는 입자 (`scene/FlowStreams.tsx`, `visual/flowParticles.ts`)
 
 - 공유 `Points` 하나. 선마다 `particleCount(strength) = min(12, ceil(strength × 30))` 개. 버퍼는 `MAX_EDGES × 12`.
 - 선마다 흐름 위상을 **누적**한다: `phase += (0.25 + 0.6 × weight) × dt` (곡선 매개변수/초, 1 에서 감는다). 입자 i 의 위치는 `point(frac(phase + i / n))` — 그룹에서 코어 쪽으로 흐른다.
@@ -112,29 +112,28 @@ point(t) = (1−t)²·from + 2(1−t)t·control + t²·to
 ## 8. 데이터 흐름
 
 ```
-SceneRoot useFrame (scene, -1)   … 기존: 보간, 존재 추적, 레이아웃
-FlowField useFrame (scene 직후)   flowTracker.update(frame.flows, 존재 추적기 key 집합, dt)
-FlowLines, FlowParticles (particles, -0.2)   추적기 edges() → 버퍼
+SceneRoot useFrame (scene, -1)       … 기존: 보간, 존재 추적, 레이아웃
+FlowStreams useFrame (particles, -0.2)
+    flowTracker.update(frame.flows, 존재 추적기 key 집합, dt)
+    → 선마다 곡선을 한 번 계산해 선 버퍼와 입자 버퍼를 함께 채운다
 ```
 
-- `FlowField` 는 추적기를 소유하고 context 에 싣는다(새 필드 `flows`). 우선순위는 `FRAME_PRIORITY.flows = -0.9` (scene 뒤, camera 앞).
-- `frame === null` 이면 추적기를 비운다. 세션이 바뀌면 SceneRoot 가 이미 존재 추적기를 비우므로 다음 프레임에 `liveGroups` 에 없는 선들이 지워진다.
+- `FlowStreams` 컴포넌트 하나가 추적기를 소유하고(useMemo), 갱신과 그리기를 함께 한다. 선과 입자가 같은 곡선을 쓰므로 선마다 제어점·색을 한 번만 계산한다. 존재 추적기와 레이아웃(-1) 뒤에 돌면 되므로 새 우선순위를 두지 않는다 — 시제품에서 처음 설계한 별도 `FlowField`·`FlowLines`·`FlowParticles` 세 컴포넌트는 곡선을 두 번 계산하게 되어 합쳤다.
+- 호버 강조는 SceneRoot 의 React 상태(`hovered`)를 프레임 루프가 읽어야 한다. context 에 `HoverFrame`(메서드로만 바뀌는 작은 클래스, M5 의 `FocusFrame` 과 같은 방식)을 두고, SceneRoot 가 `useEffect` 로 비춘다.
+- `frame === null` 이면 추적기와 흐름 위상을 비운다. 세션이 바뀌면 SceneRoot 가 존재 추적기를 비우므로 다음 프레임에 `liveGroups` 에 없는 선들이 지워진다.
 
 ## 9. 모듈 구조
 
 ```
 web/src/visual/
-  flowTracker.ts     FlowTracker (잔광), 상수
-  flowCurve.ts       flowControlPoint, curvePoint
-  flowParticles.ts   particleCount, advanceFlowPhase, particleT
+  flowTracker.ts     FlowTracker (잔광), edgeKey, edgeStrength, 상수
+  flowCurve.ts       flowControlPoint, curvePoint (out 에 쓴다 — 할당 없음)
+  flowParticles.ts   particleCount, flowSpeed, advanceFlowPhase, particleT
   coreRing.ts        (수정) coreIndexById
 web/src/scene/
-  framePriority.ts   (수정) flows: -0.9
-  sceneContext.ts    (수정) flows: FlowTracker
-  FlowField.tsx      추적기 갱신
-  FlowLines.tsx      LineSegments
-  FlowParticles.tsx  Points
-  SceneRoot.tsx      (수정) 마운트, context
+  sceneContext.ts    (수정) HoverFrame, context 의 hover
+  FlowStreams.tsx    추적기 갱신 + LineSegments + Points
+  SceneRoot.tsx      (수정) HoverFrame 생성·비추기, FlowStreams 마운트
 ```
 
 ## 10. 실패 동작
@@ -175,5 +174,5 @@ web/src/scene/
 
 1. `visual/flowTracker` (TDD)
 2. `visual/flowCurve`, `visual/flowParticles`, `coreIndexById` (TDD)
-3. 장면: FlowField, FlowLines, FlowParticles, 강조·dim
+3. 장면: HoverFrame, FlowStreams, 강조·dim
 4. 브라우저 확인
