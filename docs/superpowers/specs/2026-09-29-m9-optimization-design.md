@@ -76,7 +76,7 @@ Focus 를 잡을 때 심도 패스가 composer 에 들어가며 셰이더 프로
 - `Universe.tsx` 의 Canvas 안에 drei `PerformanceMonitor` 를 둔다. `onChange({ factor })` 에서 `setDpr(dprFor(factor, window.devicePixelRatio))`.
 - `dprFor(factor, deviceDpr)` (`visual/perf.ts`): `1 + (maxDpr − 1) × clamp(factor, 0, 1)`, `maxDpr = min(2, max(1, deviceDpr))`, 0.25 단위로 내림. NaN 은 1 로 본다.
 - 시작 factor 는 1(최대 해상도). 경계·flipflop 은 drei 기본값을 쓴다.
-- Canvas 의 `dpr` 과 `gl` 옵션은 모듈 상수로 넘긴다. 재렌더마다 새 배열을 넘기면 R3F 가 바뀐 값으로 보고 자동 해상도가 정한 dpr 을 덮어쓸 수 있다.
+- dpr 은 Universe 의 상태로 들고 숫자로 넘긴다 (R3F 9.8 은 Canvas 가 렌더될 때마다 dpr 을 리셋하므로 모듈 상수로는 막을 수 없다. 상태는 최대 약 2.5초에 한 번 바뀐다). `gl` 옵션은 모듈 상수로 둔다.
 - 알려진 한계: 창이 가려져 브라우저가 프레임을 크게 줄이면(예: 초당 3 프레임) 자동 해상도는 dpr 을 1 로 낮추고, 다시 보이면 서서히 올린다.
 
 ## 6. 성능 표시 (D50)
@@ -85,11 +85,12 @@ Focus 를 잡을 때 심도 패스가 composer 에 들어가며 셰이더 프로
 - 프레임 시간은 useFrame 의 `delta` 로 모은다. 우선순위는 새 `FRAME_PRIORITY.meter = -2` (가장 먼저). 통계(평균 ms, fps, 최대 ms)는 `visual/perf.ts` 의 `FrameStats` 가 계산한다.
 - draw call·삼각형은 composer 가 한 프레임에 여러 번 렌더하므로 `gl.info.autoReset = false` 로 두고 프레임 시작(가장 이른 우선순위)에 앞 프레임 합계를 읽은 뒤 `reset()` 한다. 표시가 꺼지면 `autoReset` 을 되돌린다.
 - 입력창에 포커스가 있을 때 `P` 는 무시한다 (기존 `D` 토글과 같은 규칙). 이 규칙(물리 키·글자·IME·반복·수정 키)을 `shell/shortcut.ts` 의 `isShortcut(event, letter)` 로 모아 Shell 의 `D` 와 Universe 의 `P` 가 함께 쓴다.
+- 표시되는 ms 는 프레임 사이의 간격이다 (vsync 로 상한이 걸림). GPU 비용이 아니므로 60 Hz 화면에서는 약 16.7 ms 로 읽힌다. 2절의 수치는 동기화한 측정에서 나온 것이다.
 - 표시 형식은 `visual/perf.ts` 의 `formatPerf` 가 만든다: `3.5 ms · 289 fps · max 7.0 ms` / `dpr 1.5 · 152 calls · 230k tris`.
 
 ## 7. 반정밀 버퍼 탐지 (D51)
 
-WebGL 탐지를 `Universe.tsx` 에서 `scene/renderSupport.ts` 로 옮기고, WebGL2 컨텍스트가 `EXT_color_buffer_float` 또는 `EXT_color_buffer_half_float` 를 지원하는지 함께 본다. 지원하지 않으면 `PostEffects` 는 `frameBufferType` 을 `UnsignedByteType` 으로 쓴다. 판정은 모듈 로드 시 한 번이다.
+WebGL 탐지를 `Universe.tsx` 에서 `scene/renderSupport.ts` 로 옮기고, WebGL2 컨텍스트가 `EXT_color_buffer_float` 또는 `EXT_color_buffer_half_float` 를 지원하는지 함께 본다. 지원하지 않으면 `PostEffects` 는 `frameBufferType` 을 `UnsignedByteType` 으로 쓴다. 판정은 모듈 로드 시 한 번이다. three 0.186 은 WebGL2 가 필요하므로 `webgl` 은 `gl2 !== null` 이다 (WebGL1 만 되는 브라우저는 "WebGL unavailable" 안내를 본다).
 
 ## 8. 값싼 정리 (D53)
 
@@ -121,7 +122,7 @@ web/src/visual/flowTracker.ts   순회 복사 제거
 
 | 대상 | 방식 |
 |---|---|
-| `dprFor`, `FrameStats`, `formatPerf` | node 단위 테스트 (`tests/visual/perf.test.ts`): 경계, 내림 단위, NaN, 통계 창, 표시 형식 |
+| `dprFor`, `FrameStats`, `formatPerf` | node 단위 테스트 (`tests/visual/perf.test.ts`): 경계, 내림 단위, NaN, 통계 창, 표시 형식, dpr 반올림 |
 | `isShortcut` | jsdom 테스트 (`tests/shortcut.test.ts`): 물리 키·글자·IME, 수정 키·반복·조합·입력창. Shell 의 기존 D 테스트가 그대로 통과 |
 | `flowTracker` 순회 변경 | 기존 10개 테스트가 그대로 통과 |
 | 장면·성능 표시 | 컨트롤러가 브라우저에서 확인 (jsdom 에는 WebGL 이 없어 Universe 가 안내문만 그린다) |

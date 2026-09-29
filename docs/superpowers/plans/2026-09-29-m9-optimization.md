@@ -124,6 +124,10 @@ describe('FrameStats', () => {
 });
 
 describe('formatPerf', () => {
+  it('prints dpr rounded to two decimals without trailing zeros', () => {
+    expect(formatPerf(null, 1.100000023841858, { calls: 1, triangles: 1 })).toContain('dpr 1.1 ·');
+  });
+
   it('shows timing, dpr and per-frame render counts on two lines', () => {
     const text = formatPerf({ avgMs: 3.456, fps: 289.4, maxMs: 7.04 }, 1.5, {
       calls: 152,
@@ -225,19 +229,19 @@ export function formatPerf(summary: FrameSummary | null, dpr: number, counts: Re
   const triangles =
     counts.triangles >= 1000 ? `${Math.round(counts.triangles / 1000)}k` : `${counts.triangles}`;
   return `${timing}
-dpr ${dpr} · ${counts.calls} calls · ${triangles} tris`;
+dpr ${Number(dpr.toFixed(2))} · ${counts.calls} calls · ${triangles} tris`;
 }
 ```
 
 - [ ] **Step 4: 통과 확인 (GREEN)**
 
 Run: `npx vitest run --project node tests/visual/perf.test.ts`
-Expected: PASS, `Tests  8 passed (8)`.
+Expected: PASS, `Tests  9 passed (9)`.
 
 - [ ] **Step 5: 전체 확인**
 
 Run: `npm test; npm run typecheck; npm run lint`
-Expected: `Tests  271 passed (271)`, typecheck 출력 없음, lint 는 기존 `src/main.tsx` 경고 1개뿐.
+Expected: `Tests  272 passed (272)`, typecheck 출력 없음, lint 는 기존 `src/main.tsx` 경고 1개뿐.
 
 - [ ] **Step 6: 커밋**
 
@@ -589,7 +593,7 @@ Expected: PASS, `Tests  10 passed (10)`.
 - [ ] **Step 5: 전체 확인**
 
 Run: `npm test; npm run typecheck; npm run lint`
-Expected: `Tests  271 passed (271)`, typecheck 깨끗, lint 기존 경고 1개.
+Expected: `Tests  272 passed (272)`, typecheck 깨끗, lint 기존 경고 1개.
 
 - [ ] **Step 6: 커밋**
 
@@ -638,11 +642,19 @@ describe('isShortcut', () => {
 
   it('ignores modifiers, repeats, composition and typing in a field', () => {
     expect(isShortcut(key({ code: 'KeyP', key: 'p', ctrlKey: true }), 'p')).toBe(false);
+    expect(isShortcut(key({ code: 'KeyP', key: 'p', altKey: true }), 'p')).toBe(false);
+    expect(isShortcut(key({ code: 'KeyP', key: 'p', metaKey: true }), 'p')).toBe(false);
     expect(isShortcut(key({ code: 'KeyP', key: 'p', repeat: true }), 'p')).toBe(false);
     expect(isShortcut(key({ code: 'KeyP', key: 'p', isComposing: true }), 'p')).toBe(false);
     expect(isShortcut(key({ code: 'KeyP', key: 'p' }, document.createElement('input')), 'p')).toBe(
       false,
     );
+    const p = { code: 'KeyP', key: 'p' };
+    expect(isShortcut(key(p, document.createElement('textarea')), 'p')).toBe(false);
+    expect(isShortcut(key(p, document.createElement('select')), 'p')).toBe(false);
+    const editable = document.createElement('div');
+    Object.defineProperty(editable, 'isContentEditable', { value: true });
+    expect(isShortcut(key(p, editable), 'p')).toBe(false);
   });
 });
 ```
@@ -760,7 +772,7 @@ Expected: PASS, 두 파일 모두 통과 (`shortcut.test.ts` 2개).
 - [ ] **Step 6: 전체 확인**
 
 Run: `npm test; npm run typecheck; npm run lint`
-Expected: `Tests  273 passed (273)`, typecheck 깨끗, lint 기존 경고 1개.
+Expected: `Tests  274 passed (274)`, typecheck 깨끗, lint 기존 경고 1개.
 
 - [ ] **Step 7: 커밋**
 
@@ -788,7 +800,7 @@ git commit -m "refactor(web): share single-letter shortcut matching between the 
 R3F·postprocessing 사항 (코드가 이미 반영하고 있다):
 - `DepthOfField` 가 빠지면 `@react-three/postprocessing` 이 EffectPass 를 다시 만든다. 초점을 잡을 때 셰이더 컴파일로 한 번 멈칫한다 (시제품 83 ms 간격).
 - 성능 표시는 `gl.info.autoReset` 을 끄고 프레임 시작에 앞 프레임 합계를 읽는다. 언마운트 때 되돌린다.
-- Canvas 의 `dpr`·`gl` 은 모듈 상수로 넘긴다 (재렌더가 자동 해상도의 dpr 을 덮어쓰지 않게).
+- Canvas 의 `dpr` 은 Universe 의 React 상태로 들고 숫자로 넘긴다 (R3F 9.8 은 Canvas 가 렌더될 때마다 dpr 을 prop 값으로 되돌리므로 모듈 상수로는 막을 수 없다. 상태는 최대 약 2.5초에 한 번 바뀐다). `gl` 옵션은 모듈 상수다.
 
 - [ ] **Step 1: `web/src/scene/renderSupport.ts`**
 
@@ -807,17 +819,16 @@ function probe(): RenderSupport {
   try {
     const canvas = document.createElement('canvas');
     const gl2 = canvas.getContext('webgl2');
-    const gl = gl2 ?? canvas.getContext('webgl');
-    if (gl === null) {
+    // three 0.186 은 WebGL2 가 필요하다. WebGL1 만 되는 브라우저는 지원하지 않는 것으로 본다.
+    if (gl2 === null) {
       return { webgl: false, halfFloat: false };
     }
     const halfFloat =
-      gl2 !== null &&
-      (gl2.getExtension('EXT_color_buffer_float') !== null ||
-        gl2.getExtension('EXT_color_buffer_half_float') !== null);
+      gl2.getExtension('EXT_color_buffer_float') !== null ||
+      gl2.getExtension('EXT_color_buffer_half_float') !== null;
     // 탐지용 컨텍스트를 그대로 두면 Universe 가 마운트될 때마다 하나씩
     // 새어 나간다. 판정이 끝나면 바로 반납한다.
-    (gl as WebGLRenderingContext).getExtension('WEBGL_lose_context')?.loseContext();
+    gl2.getExtension('WEBGL_lose_context')?.loseContext();
     return { webgl: true, halfFloat };
   } catch {
     return { webgl: false, halfFloat: false };
@@ -953,9 +964,11 @@ interface Controls {
   target: Vector3;
 }
 
-// M8 스펙 4절. 장면을 선형 HDR 버퍼에 그린 뒤 심도 → Bloom → ACES 를 한 번씩 거친다.
-// 세 효과는 래퍼가 하나의 EffectPass 로 합친다. Bloom 은 심도를 거치지 않은 선명한
-// 장면 입력을 읽고, 그 결과가 심도 결과 뒤에 더해진다.
+// M8 스펙 4절. 장면을 선형 HDR 버퍼에 그린 뒤 Bloom → ACES 를 거친다. 심도는 초점이
+// 잡혀 있는 동안과 풀린 뒤 전환이 끝나기 전에만 composer 에 들어간다 (M9 스펙 4절).
+// 심도가 있으면 래퍼가 세 효과를 하나의 EffectPass 로 합친다. Bloom 은 심도를 거치지
+// 않은 선명한 장면 입력을 읽고, 그 결과가 심도 결과 뒤에 더해진다. 심도가 없으면
+// 패스는 Bloom + 톤 매핑이다.
 // 톤 매핑은 여기 한 곳에서만 한다. composer 의 장면은 렌더 타깃에 그려지고, 렌더 타깃에
 // 그릴 때 three 는 재질에 톤 매핑을 적용하지 않는다. 또 @react-three/postprocessing 은
 // 마운트되어 있는 동안 gl.toneMapping 을 NoToneMapping 으로 강제한다. 따라서 ToneMapping
@@ -1026,7 +1039,7 @@ function useDepthOfFieldActive(): boolean {
 
 ```tsx
 import { OrbitControls, PerformanceMonitor, Stars } from '@react-three/drei';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas } from '@react-three/fiber';
 import { useEffect, useState } from 'react';
 
 import { isShortcut } from '../shell/shortcut';
@@ -1039,21 +1052,18 @@ import { useFocusStore } from './focusStore';
 import { renderSupport } from './renderSupport';
 import { SceneRoot } from './SceneRoot';
 
-// 재렌더(성능 표시 토글 등)마다 새 배열·객체를 넘기지 않는다. 바뀐 값으로 보여
-// 자동 해상도가 정한 dpr 을 덮어쓰지 않게 한다.
-const CANVAS_DPR: [number, number] = [1, 2];
 // 화면에 직접 그리는 것은 후처리의 전체화면 사각형 하나뿐이다. 캔버스 자체
 // 안티에일리어싱은 효과가 없고 비용만 든다 (M9 스펙 2.2절). MSAA 는 composer 가 한다.
 const GL_OPTIONS = { antialias: false };
 
 // M9 스펙 5절. 실제 fps 를 보고 dpr 을 [1, 기기 dpr(최대 2)] 사이에서 조정한다.
-// 느린 GPU 의 안전장치다. 최대 해상도에서 시작한다.
-function AdaptiveResolution() {
-  const setDpr = useThree((state) => state.setDpr);
+// 느린 GPU 의 안전장치다. 최대 해상도에서 시작한다. 정한 dpr 은 onDpr 로 Universe 의
+// 상태에 올린다 (Canvas 에 직접 setDpr 하면 다음 렌더에서 dpr prop 으로 되돌아간다).
+function AdaptiveResolution({ onDpr }: { onDpr: (dpr: number) => void }) {
   return (
     <PerformanceMonitor
       factor={1}
-      onChange={({ factor }) => setDpr(dprFor(factor, window.devicePixelRatio))}
+      onChange={({ factor }) => onDpr(dprFor(factor, window.devicePixelRatio))}
     />
   );
 }
@@ -1064,6 +1074,8 @@ export function Universe() {
   // 사용자가 한 번 조작하면 자동 회전을 멈춘다. 보던 각도를 빼앗지 않는다.
   const [autoRotate, setAutoRotate] = useState(true);
   const focused = useFocusStore((state) => state.focusedKey !== null);
+  // 자동 해상도가 정한 dpr. Canvas 는 렌더될 때마다 dpr prop 으로 되돌리므로 (R3F 9.8) 값은 여기서 들고 있다. 바뀌는 것은 PerformanceMonitor 가 factor 를 바꿀 때뿐이라 초당 한 번도 안 된다.
+  const [dpr, setDpr] = useState(() => dprFor(1, window.devicePixelRatio));
   // 성능 표시 (M9 스펙 6절). 켜고 끄는 것만 React 상태다.
   const [showPerf, setShowPerf] = useState(false);
 
@@ -1092,7 +1104,7 @@ export function Universe() {
   return (
     <div className="universe">
       <Canvas
-        dpr={CANVAS_DPR}
+        dpr={dpr}
         gl={GL_OPTIONS}
         camera={{
           fov: 50,
@@ -1108,7 +1120,7 @@ export function Universe() {
         <directionalLight position={[20, 30, 25]} intensity={1.1} />
         <Stars radius={120} depth={60} count={4000} factor={4} fade />
         <SceneRoot />
-        <AdaptiveResolution />
+        <AdaptiveResolution onDpr={setDpr} />
         {showPerf && <PerfMeter />}
         <OrbitControls
           makeDefault
@@ -1276,7 +1288,7 @@ export function Universe() {
 
 Run: `npm test; npm run typecheck; npm run lint; npm run build`
 Expected:
-- `Tests  273 passed (273)` (이 Task 는 테스트를 더하지 않는다), `act(`·key 경고 없음
+- `Tests  274 passed (274)` (이 Task 는 테스트를 더하지 않는다), `act(`·key 경고 없음
 - typecheck 출력 없음
 - lint 오류 0, 경고는 기존 `src/main.tsx` 1개뿐
 - build 성공, `index-*.js` 약 1.47 MB
@@ -1296,7 +1308,7 @@ git commit -m "perf(web): run depth of field only while focused, MSAA 4, adaptiv
 
 ## M9 완료 조건 (컨트롤러가 확인)
 
-- [ ] `npm test`(273), `npm run typecheck`, `npm run lint`(기존 경고 1개), `npm run build` 통과.
+- [ ] `npm test`(274), `npm run typecheck`, `npm run lint`(기존 경고 1개), `npm run build` 통과.
 - [ ] `src/visual/` 이 `react`·`three`·`postprocessing`·`@react-three/*`·`zustand`·`gsap` 을 import 하지 않는다.
 - [ ] 브라우저 (dev 서버 + 엔진):
   - 1920×1080 dpr 2 에서 Focus 없는 프레임 시간 중앙값 4 ms 이하 (시제품 2.8 ms, 스펙 2절 방식).

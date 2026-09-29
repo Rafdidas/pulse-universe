@@ -57,6 +57,10 @@ describe('FrameStats', () => {
 });
 
 describe('formatPerf', () => {
+  it('prints dpr rounded to two decimals without trailing zeros', () => {
+    expect(formatPerf(null, 1.100000023841858, { calls: 1, triangles: 1 })).toContain('dpr 1.1 ·');
+  });
+
   it('shows timing, dpr and per-frame render counts on two lines', () => {
     const text = formatPerf({ avgMs: 3.456, fps: 289.4, maxMs: 7.04 }, 1.5, {
       calls: 152,

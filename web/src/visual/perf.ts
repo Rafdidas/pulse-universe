@@ -75,5 +75,5 @@ export function formatPerf(summary: FrameSummary | null, dpr: number, counts: Re
   const triangles =
     counts.triangles >= 1000 ? `${Math.round(counts.triangles / 1000)}k` : `${counts.triangles}`;
   return `${timing}
-dpr ${dpr} · ${counts.calls} calls · ${triangles} tris`;
+dpr ${Number(dpr.toFixed(2))} · ${counts.calls} calls · ${triangles} tris`;
 }

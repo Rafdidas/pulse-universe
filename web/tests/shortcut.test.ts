@@ -23,10 +23,18 @@ describe('isShortcut', () => {
 
   it('ignores modifiers, repeats, composition and typing in a field', () => {
     expect(isShortcut(key({ code: 'KeyP', key: 'p', ctrlKey: true }), 'p')).toBe(false);
+    expect(isShortcut(key({ code: 'KeyP', key: 'p', altKey: true }), 'p')).toBe(false);
+    expect(isShortcut(key({ code: 'KeyP', key: 'p', metaKey: true }), 'p')).toBe(false);
     expect(isShortcut(key({ code: 'KeyP', key: 'p', repeat: true }), 'p')).toBe(false);
     expect(isShortcut(key({ code: 'KeyP', key: 'p', isComposing: true }), 'p')).toBe(false);
     expect(isShortcut(key({ code: 'KeyP', key: 'p' }, document.createElement('input')), 'p')).toBe(
       false,
     );
+    const p = { code: 'KeyP', key: 'p' };
+    expect(isShortcut(key(p, document.createElement('textarea')), 'p')).toBe(false);
+    expect(isShortcut(key(p, document.createElement('select')), 'p')).toBe(false);
+    const editable = document.createElement('div');
+    Object.defineProperty(editable, 'isContentEditable', { value: true });
+    expect(isShortcut(key(p, editable), 'p')).toBe(false);
   });
 });

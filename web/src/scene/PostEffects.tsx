@@ -29,9 +29,11 @@ interface Controls {
   target: Vector3;
 }
 
-// M8 스펙 4절. 장면을 선형 HDR 버퍼에 그린 뒤 심도 → Bloom → ACES 를 한 번씩 거친다.
-// 세 효과는 래퍼가 하나의 EffectPass 로 합친다. Bloom 은 심도를 거치지 않은 선명한
-// 장면 입력을 읽고, 그 결과가 심도 결과 뒤에 더해진다.
+// M8 스펙 4절. 장면을 선형 HDR 버퍼에 그린 뒤 Bloom → ACES 를 거친다. 심도는 초점이
+// 잡혀 있는 동안과 풀린 뒤 전환이 끝나기 전에만 composer 에 들어간다 (M9 스펙 4절).
+// 심도가 있으면 래퍼가 세 효과를 하나의 EffectPass 로 합친다. Bloom 은 심도를 거치지
+// 않은 선명한 장면 입력을 읽고, 그 결과가 심도 결과 뒤에 더해진다. 심도가 없으면
+// 패스는 Bloom + 톤 매핑이다.
 // 톤 매핑은 여기 한 곳에서만 한다. composer 의 장면은 렌더 타깃에 그려지고, 렌더 타깃에
 // 그릴 때 three 는 재질에 톤 매핑을 적용하지 않는다. 또 @react-three/postprocessing 은
 // 마운트되어 있는 동안 gl.toneMapping 을 NoToneMapping 으로 강제한다. 따라서 ToneMapping

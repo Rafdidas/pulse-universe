@@ -12,17 +12,16 @@ function probe(): RenderSupport {
   try {
     const canvas = document.createElement('canvas');
     const gl2 = canvas.getContext('webgl2');
-    const gl = gl2 ?? canvas.getContext('webgl');
-    if (gl === null) {
+    // three 0.186 은 WebGL2 가 필요하다. WebGL1 만 되는 브라우저는 지원하지 않는 것으로 본다.
+    if (gl2 === null) {
       return { webgl: false, halfFloat: false };
     }
     const halfFloat =
-      gl2 !== null &&
-      (gl2.getExtension('EXT_color_buffer_float') !== null ||
-        gl2.getExtension('EXT_color_buffer_half_float') !== null);
+      gl2.getExtension('EXT_color_buffer_float') !== null ||
+      gl2.getExtension('EXT_color_buffer_half_float') !== null;
     // 탐지용 컨텍스트를 그대로 두면 Universe 가 마운트될 때마다 하나씩
     // 새어 나간다. 판정이 끝나면 바로 반납한다.
-    (gl as WebGLRenderingContext).getExtension('WEBGL_lose_context')?.loseContext();
+    gl2.getExtension('WEBGL_lose_context')?.loseContext();
     return { webgl: true, halfFloat };
   } catch {
     return { webgl: false, halfFloat: false };

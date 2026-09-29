@@ -1,5 +1,5 @@
 import { OrbitControls, PerformanceMonitor, Stars } from '@react-three/drei';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas } from '@react-three/fiber';
 import { useEffect, useState } from 'react';
 
 import { isShortcut } from '../shell/shortcut';
@@ -12,21 +12,18 @@ import { useFocusStore } from './focusStore';
 import { renderSupport } from './renderSupport';
 import { SceneRoot } from './SceneRoot';
 
-// 재렌더(성능 표시 토글 등)마다 새 배열·객체를 넘기지 않는다. 바뀐 값으로 보여
-// 자동 해상도가 정한 dpr 을 덮어쓰지 않게 한다.
-const CANVAS_DPR: [number, number] = [1, 2];
 // 화면에 직접 그리는 것은 후처리의 전체화면 사각형 하나뿐이다. 캔버스 자체
 // 안티에일리어싱은 효과가 없고 비용만 든다 (M9 스펙 2.2절). MSAA 는 composer 가 한다.
 const GL_OPTIONS = { antialias: false };
 
 // M9 스펙 5절. 실제 fps 를 보고 dpr 을 [1, 기기 dpr(최대 2)] 사이에서 조정한다.
-// 느린 GPU 의 안전장치다. 최대 해상도에서 시작한다.
-function AdaptiveResolution() {
-  const setDpr = useThree((state) => state.setDpr);
+// 느린 GPU 의 안전장치다. 최대 해상도에서 시작한다. 정한 dpr 은 onDpr 로 Universe 의
+// 상태에 올린다 (Canvas 에 직접 setDpr 하면 다음 렌더에서 dpr prop 으로 되돌아간다).
+function AdaptiveResolution({ onDpr }: { onDpr: (dpr: number) => void }) {
   return (
     <PerformanceMonitor
       factor={1}
-      onChange={({ factor }) => setDpr(dprFor(factor, window.devicePixelRatio))}
+      onChange={({ factor }) => onDpr(dprFor(factor, window.devicePixelRatio))}
     />
   );
 }
@@ -37,6 +34,8 @@ export function Universe() {
   // 사용자가 한 번 조작하면 자동 회전을 멈춘다. 보던 각도를 빼앗지 않는다.
   const [autoRotate, setAutoRotate] = useState(true);
   const focused = useFocusStore((state) => state.focusedKey !== null);
+  // 자동 해상도가 정한 dpr. Canvas 는 렌더될 때마다 dpr prop 으로 되돌리므로 (R3F 9.8) 값은 여기서 들고 있다. 바뀌는 것은 PerformanceMonitor 가 factor 를 바꿀 때뿐이라 초당 한 번도 안 된다.
+  const [dpr, setDpr] = useState(() => dprFor(1, window.devicePixelRatio));
   // 성능 표시 (M9 스펙 6절). 켜고 끄는 것만 React 상태다.
   const [showPerf, setShowPerf] = useState(false);
 
@@ -65,7 +64,7 @@ export function Universe() {
   return (
     <div className="universe">
       <Canvas
-        dpr={CANVAS_DPR}
+        dpr={dpr}
         gl={GL_OPTIONS}
         camera={{
           fov: 50,
@@ -81,7 +80,7 @@ export function Universe() {
         <directionalLight position={[20, 30, 25]} intensity={1.1} />
         <Stars radius={120} depth={60} count={4000} factor={4} fade />
         <SceneRoot />
-        <AdaptiveResolution />
+        <AdaptiveResolution onDpr={setDpr} />
         {showPerf && <PerfMeter />}
         <OrbitControls
           makeDefault
