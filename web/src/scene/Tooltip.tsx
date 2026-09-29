@@ -4,6 +4,8 @@ import { useRef } from 'react';
 import type { Group } from 'three';
 
 import { formatMb, formatPct } from '../dashboard/format';
+import { coreLoad, orbRadius } from '../visual/coreMapping';
+import { corePosition } from '../visual/coreRing';
 import { floatingPosition, type Vec3 } from '../visual/layout';
 import { radiusFor } from '../visual/mapping';
 import { FRAME_PRIORITY } from './framePriority';
@@ -19,6 +21,19 @@ interface Label {
 // 숫자는 대시보드와 같은 formatMb·formatPct 로 쓴다 — 두 화면이 일치해야 한다.
 function labelFor(target: NonNullable<Hovered>, context: SceneContextValue): Label | null {
   const { cache, layout, presence, satellites } = context;
+  if (target.kind === 'core') {
+    const cores = cache.snapshot?.cores;
+    const core = cores?.[target.index];
+    if (cores === undefined || core === undefined) {
+      return null;
+    }
+    return {
+      position: corePosition(target.index, cores.length),
+      radius: orbRadius(coreLoad(core.pct)),
+      title: `CPU ${core.id}`,
+      detail: `${formatPct(core.pct)}%`,
+    };
+  }
   if (target.kind === 'satellite') {
     const view = satellites.get(target.pid);
     if (view === undefined) {

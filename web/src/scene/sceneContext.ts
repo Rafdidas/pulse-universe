@@ -10,6 +10,7 @@ import type { PresenceEntry, PresenceTracker } from '../visual/presence';
 export type Hovered =
   | { kind: 'group'; key: string }
   | { kind: 'satellite'; pid: number }
+  | { kind: 'core'; index: number }
   | null;
 
 // CameraRig 가 매 프레임 채운다. 노드는 이것으로 어두워지고, 위성은 펼쳐진다.

@@ -19,7 +19,10 @@ import { LayoutSim } from '../visual/layout';
 import { LifecycleConsumer, type LifecycleEvent } from '../visual/lifecycleEvents';
 import { colorFor, radiusFor } from '../visual/mapping';
 import { PresenceTracker } from '../visual/presence';
+import { AmbientDust } from './AmbientDust';
 import { CameraRig } from './CameraRig';
+import { CoreRing } from './CoreRing';
+import { CoreSparks } from './CoreSparks';
 import { useFocusStore } from './focusStore';
 import { FRAME_PRIORITY } from './framePriority';
 import { nodeIdsOf, parseNodeId } from './nodeList';
@@ -183,12 +186,10 @@ export function SceneRoot() {
 
   const keys = nodeIds.map((id) => parseNodeId(id).key);
   // 호버 중이던 천체가 사라지면 R3F 가 onPointerOut 없이 오브젝트를 지운다.
-  // 지금도 있는 그룹일 때만 그룹 툴팁을 그린다. 위성 툴팁은 위성이 없으면
+  // 지금도 있는 그룹일 때만 그룹 툴팁을 그린다. 위성·코어 툴팁은 대상이 없으면
   // 스스로 숨는다.
   const liveHovered =
-    hovered !== null && (hovered.kind === 'satellite' || keys.includes(hovered.key))
-      ? hovered
-      : null;
+    hovered !== null && (hovered.kind !== 'group' || keys.includes(hovered.key)) ? hovered : null;
 
   return (
     <SceneContext.Provider value={context}>
@@ -198,6 +199,9 @@ export function SceneRoot() {
         return <ProcessNode key={key} nodeKey={key} account={account} />;
       })}
       <Satellites />
+      <CoreRing />
+      <CoreSparks />
+      <AmbientDust />
       <Particles pool={pool} />
       {liveHovered !== null && <Tooltip target={liveHovered} />}
     </SceneContext.Provider>
