@@ -3,6 +3,7 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { App } from '../dashboard/App';
 import { Universe } from '../scene/Universe';
 import { SceneErrorBoundary } from './SceneErrorBoundary';
+import { isShortcut } from './shortcut';
 import { UniverseBadge } from './UniverseBadge';
 import { toggledHash, viewFromHash } from './view';
 import './shell.css';
@@ -14,14 +15,6 @@ function subscribeToHash(onChange: () => void): () => void {
 
 function currentHash(): string {
   return window.location.hash;
-}
-
-// 입력 중인 글자를 단축키로 가로채지 않는다.
-function isTyping(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
-  );
 }
 
 // 우주와 대시보드 중 하나만 마운트한다. 숨긴 쪽을 남겨 두면 대시보드의
@@ -38,19 +31,9 @@ export function Shell() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.ctrlKey || event.metaKey || event.altKey || isTyping(event.target)) {
-        return;
-      }
-      // 한글 IME 가 켜져 있으면 event.key 는 'ㅇ' 이나 조합 중 'Process' 로
-      // 읽혀 물리 키를 알 수 없다. 그래서 물리 키(event.code)로 맞춘다.
-      // 반대로 AZERTY·Dvorak 에서는 d 가 다른 물리 키에 있으므로 글자
-      // (event.key)도 받는다. 조합 중(isComposing)이거나 키를 누르고 있어
-      // 자동 반복(repeat)되는 입력은 무시한다 — 안 그러면 초당 30번씩 뷰가
-      // 뒤집히며 WebGL 컨텍스트를 매번 새로 만든다.
-      if (event.isComposing || event.repeat) {
-        return;
-      }
-      if (event.code === 'KeyD' || event.key === 'd' || event.key === 'D') {
+      // 자동 반복을 무시하지 않으면 키를 누르고 있는 동안 초당 30번씩 뷰가
+      // 뒤집히며 WebGL 컨텍스트를 매번 새로 만든다 (isShortcut 참조).
+      if (isShortcut(event, 'd')) {
         toggle();
       }
     }
