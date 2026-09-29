@@ -23,13 +23,10 @@ import {
 } from '../visual/mapping';
 import { presenceVisual } from '../visual/presence';
 import { useFocusStore } from './focusStore';
+import { CLICK_SLOP, DIM_DEPTH } from './interaction';
 import { useSceneContext, type FocusFrame } from './sceneContext';
 
 const SALT_PHASE = 2;
-// 초점이 잡히면 다른 천체의 발광·불투명도가 이만큼까지 줄어든다 (M5 스펙 9.3).
-const DIM_DEPTH = 0.75;
-// 드래그 끝에 버튼을 뗀 것은 클릭이 아니다 (px).
-const CLICK_SLOP = 2;
 
 // 초점과 무관한 천체일수록 1 보다 작다.
 function dimFor(focus: FocusFrame, key: string): number {

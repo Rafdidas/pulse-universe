@@ -84,7 +84,8 @@ function burstFor(
 export function SceneRoot() {
   const [nodeIds, setNodeIds] = useState<string[]>([]);
   const [hovered, setHovered] = useState<Hovered>(null);
-  const signature = useRef('');
+  // 마지막으로 React 에 넘긴 존재 추적기 version.
+  const shownVersion = useRef(-1);
   // 마지막으로 본 세션. null 프레임을 못 보고 세션이 바뀌어도 장면을 비우기 위해.
   const lastSession = useRef<string | null>(useSnapshotStore.getState().session);
 
@@ -173,11 +174,10 @@ export function SceneRoot() {
       }
     }
 
-    const ids = nodeIdsOf(entries);
-    const next = ids.join('\n');
-    if (next !== signature.current) {
-      signature.current = next;
-      setNodeIds(ids);
+    // 노드 목록은 항목이 추가·삭제됐을 때만 다시 만든다 (M6 스펙 10절).
+    if (presence.version !== shownVersion.current) {
+      shownVersion.current = presence.version;
+      setNodeIds(nodeIdsOf(entries));
     }
   }, FRAME_PRIORITY.scene);
 

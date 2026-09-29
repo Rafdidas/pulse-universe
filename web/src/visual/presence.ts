@@ -59,6 +59,14 @@ export function presenceVisual(entry: Pick<PresenceEntry<unknown>, 'phase' | 'pr
 export class PresenceTracker<T> {
   private readonly items = new Map<string, PresenceEntry<T>>();
   private initialized = false;
+  private membership = 0;
+
+  // 항목이 추가·삭제되거나 reset 될 때마다 1 씩 는다. 값 갱신이나 phase 진행으로는
+  // 바뀌지 않는다. 장면은 이 값이 바뀔 때만 노드 목록을 다시 만든다 — 매 프레임
+  // key 를 이어 붙여 비교하지 않는다 (M6 스펙 10절).
+  get version(): number {
+    return this.membership;
+  }
 
   // born: 이번 프레임에 실제로 생성된 key. died: 실제로 종료된 key.
   // 두 집합은 lifecycle 을 소비한 프레임에만 비어 있지 않다.
@@ -73,6 +81,9 @@ export class PresenceTracker<T> {
       this.initialized = true;
       for (const { key, value } of current) {
         this.items.set(key, { key, phase: 'present', progress: 1, value, startSec: nowSec });
+      }
+      if (current.length > 0) {
+        this.membership += 1;
       }
       return;
     }
@@ -89,6 +100,7 @@ export class PresenceTracker<T> {
           value,
           startSec: nowSec,
         });
+        this.membership += 1;
         continue;
       }
       existing.value = value;
@@ -130,6 +142,7 @@ export class PresenceTracker<T> {
       if (entry.progress >= 1) {
         if (isLeaving(entry.phase)) {
           this.items.delete(entry.key);
+          this.membership += 1;
         } else {
           entry.phase = 'present';
         }
@@ -149,5 +162,6 @@ export class PresenceTracker<T> {
   reset(): void {
     this.items.clear();
     this.initialized = false;
+    this.membership += 1;
   }
 }

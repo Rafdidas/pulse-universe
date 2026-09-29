@@ -23,7 +23,8 @@ export function Satellites() {
   const context = useSceneContext();
   const tracker = useMemo(() => new PresenceTracker<ChildProcess>(), []);
   const owner = useRef<string | null>(null);
-  const signature = useRef('');
+  // 마지막으로 React 에 넘긴 추적기 version. -1 은 "아무것도 안 보여 주는 중".
+  const shownVersion = useRef(-1);
   const [shown, setShown] = useState<Shown>(NOTHING);
 
   useFrame(() => {
@@ -42,8 +43,8 @@ export function Satellites() {
         : floatingPosition(layout, nextOwner, cache.timeSec);
     satellites.clear();
     if (entry === undefined || center === undefined || cache.timeSec === null) {
-      if (signature.current !== '') {
-        signature.current = '';
+      if (shownVersion.current !== -1) {
+        shownVersion.current = -1;
         setShown(NOTHING);
       }
       return;
@@ -51,6 +52,7 @@ export function Satellites() {
 
     const born = new Set<string>();
     const died = new Set<string>();
+    // 이벤트가 없는 프레임(대부분)에는 빈 집합 그대로 넘어간다.
     for (const event of events.list) {
       if (event.key !== nextOwner) {
         continue;
@@ -82,10 +84,11 @@ export function Satellites() {
       });
     }
 
-    const pids = tracker.entries().map((satellite) => satellite.value.pid);
-    const next = `${entry.value.account}|${pids.join(',')}`;
-    if (next !== signature.current) {
-      signature.current = next;
+    // 위성 목록은 추적기 version 이 바뀔 때만 다시 만든다. 주인이 바뀌면 tracker.reset()
+    // 이 version 을 올리므로 계정이 바뀌는 경우도 여기서 잡힌다.
+    if (tracker.version !== shownVersion.current) {
+      shownVersion.current = tracker.version;
+      const pids = tracker.entries().map((satellite) => satellite.value.pid);
       setShown({ account: entry.value.account, pids });
     }
   }, FRAME_PRIORITY.satellites);

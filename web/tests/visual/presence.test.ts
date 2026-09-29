@@ -163,6 +163,45 @@ describe('a key that dies while still appearing', () => {
   });
 });
 
+describe('PresenceTracker.version', () => {
+  it('changes when the first input arrives, when keys are added and when they are removed', () => {
+    const tracker = new PresenceTracker<number>();
+    const v0 = tracker.version;
+    tracker.update(items('a'), NONE, NONE, 0);
+    const v1 = tracker.version;
+    expect(v1).not.toBe(v0);
+
+    tracker.update(items('a', 'b'), NONE, NONE, 1);
+    const v2 = tracker.version;
+    expect(v2).not.toBe(v1);
+
+    // b 가 다 밝아진 뒤 목록에서 빠져 페이드아웃을 시작해도 항목은 아직 있다 — 목록은 그대로다.
+    tracker.update(items('a', 'b'), NONE, NONE, 1 + FADE_SEC);
+    tracker.update(items('a'), NONE, NONE, 2);
+    expect(tracker.version).toBe(v2);
+
+    tracker.update(items('a'), NONE, NONE, 2 + FADE_SEC);
+    expect(tracker.version).not.toBe(v2);
+  });
+
+  it('does not change on value updates or phase progress alone', () => {
+    const tracker = new PresenceTracker<number>();
+    tracker.update([{ key: 'a', value: 1 }], NONE, NONE, 0);
+    tracker.update([{ key: 'a', value: 1 }, { key: 'b', value: 2 }], NONE, NONE, 1);
+    const v = tracker.version;
+    tracker.update([{ key: 'a', value: 5 }, { key: 'b', value: 6 }], NONE, NONE, 1.1);
+    tracker.update([{ key: 'a', value: 5 }, { key: 'b', value: 6 }], NONE, NONE, 1 + FADE_SEC);
+    expect(tracker.version).toBe(v);
+  });
+
+  it('changes on reset', () => {
+    const tracker = started('a');
+    const v = tracker.version;
+    tracker.reset();
+    expect(tracker.version).not.toBe(v);
+  });
+});
+
 describe('presenceVisual', () => {
   it('matches the spec table', () => {
     expect(presenceVisual({ phase: 'present', progress: 1 })).toEqual({ scale: 1, opacity: 1 });

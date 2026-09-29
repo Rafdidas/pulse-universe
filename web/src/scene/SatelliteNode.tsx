@@ -6,13 +6,12 @@ import type { ProcessGroup } from '../protocol/schema';
 import { hash01 } from '../visual/hash';
 import { activityFor, advancePhase, colorFor, glowFor, pulseFor } from '../visual/mapping';
 import { presenceVisual } from '../visual/presence';
+import { CLICK_SLOP } from './interaction';
 import { useSceneContext } from './sceneContext';
 
 const SALT_PHASE = 2;
 // 위성은 부모 색 계열에서 조금 더 밝게 그린다.
 const SATELLITE_LIGHTNESS = 0.68;
-// 드래그 끝에 버튼을 뗀 것은 클릭이 아니다 (px). ProcessNode 의 CLICK_SLOP 과 동일한 값.
-const CLICK_SLOP = 2;
 
 interface Props {
   pid: number;
