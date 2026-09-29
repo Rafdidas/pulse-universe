@@ -189,6 +189,7 @@ describe('PresenceTracker.version', () => {
     tracker.update([{ key: 'a', value: 1 }], NONE, NONE, 0);
     tracker.update([{ key: 'a', value: 1 }, { key: 'b', value: 2 }], NONE, NONE, 1);
     const v = tracker.version;
+    expect(typeof v).toBe('number');
     tracker.update([{ key: 'a', value: 5 }, { key: 'b', value: 6 }], NONE, NONE, 1.1);
     tracker.update([{ key: 'a', value: 5 }, { key: 'b', value: 6 }], NONE, NONE, 1 + FADE_SEC);
     expect(tracker.version).toBe(v);
@@ -199,6 +200,22 @@ describe('PresenceTracker.version', () => {
     const v = tracker.version;
     tracker.reset();
     expect(tracker.version).not.toBe(v);
+  });
+
+  it('does not change when an already empty tracker is reset again', () => {
+    // 장면은 스토어가 비어 있는 동안 매 프레임 reset() 을 부른다. 그때마다 version 이
+    // 오르면 매 프레임 React 를 갱신하게 된다.
+    const tracker = started('a');
+    tracker.reset();
+    const v = tracker.version;
+    tracker.reset();
+    tracker.reset();
+    expect(tracker.version).toBe(v);
+
+    const untouched = new PresenceTracker<number>();
+    const v0 = untouched.version;
+    untouched.reset();
+    expect(untouched.version).toBe(v0);
   });
 });
 

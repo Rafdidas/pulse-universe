@@ -160,8 +160,12 @@ export class PresenceTracker<T> {
 
   // 세션이 바뀌거나 스토어가 비었을 때. 다음 입력은 다시 "이미 있던 것" 이 된다.
   reset(): void {
+    // 이미 비어 있으면 아무것도 바뀌지 않는다. 장면은 스토어가 비어 있는 동안 매 프레임
+    // reset() 을 부르므로, 여기서 매번 올리면 매 프레임 React 를 갱신하게 된다.
+    if (this.items.size > 0) {
+      this.membership += 1;
+    }
     this.items.clear();
     this.initialized = false;
-    this.membership += 1;
   }
 }
