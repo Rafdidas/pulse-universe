@@ -45,6 +45,16 @@ export class FrameEvents {
   }
 }
 
+// 지금 호버 중인 대상. SceneRoot 의 React 상태를 프레임 루프가 읽을 수 있게 비춘다
+// (M7 flow 강조). 값은 메서드로만 바꾼다.
+export class HoverFrame {
+  current: Hovered = null;
+
+  set(hovered: Hovered): void {
+    this.current = hovered;
+  }
+}
+
 // Satellites 가 매 프레임 채운다. 툴팁과 입자가 위성 위치를 읽는다.
 export interface SatelliteView {
   position: Vec3;
@@ -62,6 +72,7 @@ export interface SceneContextValue {
   presence: PresenceTracker<InterpolatedGroup>;
   events: FrameEvents;
   focus: FocusFrame;
+  hover: HoverFrame;
   satellites: Map<number, SatelliteView>;
   setHovered: (update: (current: Hovered) => Hovered) => void;
 }

@@ -1,5 +1,5 @@
 import { useFrame } from '@react-three/fiber';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Color } from 'three';
 
 import { sample, type InterpolatedGroup } from '../state/interpolator';
@@ -23,6 +23,7 @@ import { AmbientDust } from './AmbientDust';
 import { CameraRig } from './CameraRig';
 import { CoreRing } from './CoreRing';
 import { CoreSparks } from './CoreSparks';
+import { FlowStreams } from './FlowStreams';
 import { useFocusStore } from './focusStore';
 import { FRAME_PRIORITY } from './framePriority';
 import { nodeIdsOf, parseNodeId } from './nodeList';
@@ -31,6 +32,7 @@ import { ProcessNode } from './ProcessNode';
 import { Satellites } from './Satellites';
 import {
   FocusFrame,
+  HoverFrame,
   FrameEvents,
   SceneContext,
   type Hovered,
@@ -99,12 +101,18 @@ export function SceneRoot() {
       presence: new PresenceTracker<InterpolatedGroup>(),
       events: new FrameEvents(),
       focus: new FocusFrame(),
+      hover: new HoverFrame(),
       satellites: new Map(),
       setHovered,
     }),
     [],
   );
   const consumer = useMemo(() => new LifecycleConsumer(), []);
+
+  // 호버는 React 상태다. flow 강조가 프레임 루프에서 읽을 수 있게 비춘다.
+  useEffect(() => {
+    context.hover.set(hovered);
+  }, [context, hovered]);
   const pool = useMemo(() => new BurstPool(), []);
 
   useFrame(() => {
@@ -202,6 +210,7 @@ export function SceneRoot() {
       <CoreRing />
       <CoreSparks />
       <AmbientDust />
+      <FlowStreams />
       <Particles pool={pool} />
       {liveHovered !== null && <Tooltip target={liveHovered} />}
     </SceneContext.Provider>
