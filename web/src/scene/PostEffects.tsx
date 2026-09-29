@@ -22,8 +22,12 @@ interface Controls {
 }
 
 // M8 스펙 4절. 장면을 선형 HDR 버퍼에 그린 뒤 심도 → Bloom → ACES 를 한 번씩 거친다.
-// 톤 매핑은 여기 한 곳에서만 한다 — 렌더 타깃에 그릴 때 three 는 재질에서 톤 매핑을
-// 하지 않는다.
+// 세 효과는 래퍼가 하나의 EffectPass 로 합친다. Bloom 은 심도를 거치지 않은 선명한
+// 장면 입력을 읽고, 그 결과가 심도 결과 뒤에 더해진다.
+// 톤 매핑은 여기 한 곳에서만 한다. composer 의 장면은 렌더 타깃에 그려지고, 렌더 타깃에
+// 그릴 때 three 는 재질에 톤 매핑을 적용하지 않는다. 또 @react-three/postprocessing 은
+// 마운트되어 있는 동안 gl.toneMapping 을 NoToneMapping 으로 강제한다. 따라서 ToneMapping
+// 효과가 유일한 톤 매핑이며, composer 밖에서 그리는 것은 톤 매핑을 받지 못한다.
 export function PostEffects() {
   const { focus } = useSceneContext();
   const depthOfField = useRef<DepthOfFieldEffect>(null);

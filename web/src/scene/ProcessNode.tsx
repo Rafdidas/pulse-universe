@@ -91,9 +91,13 @@ export function ProcessNode({ nodeKey, account }: Props) {
     material.opacity = opacity;
     // 불투명할 때는 transparent 를 끈다. 정렬 비용과 깊이 문제를 피한다.
     const transparent = opacity < 1;
-    if (material.transparent !== transparent) {
+    // 초점 dim 으로만 투명해진 천체는 깊이를 계속 쓴다. 심도(M8)가 깊이로 흐림을 정하므로,
+    // 깊이를 끄면 초점이 옮겨 가는 동안 천체가 통째로 흐려졌다 갑자기 선명해진다.
+    // 존재 페이드(생성·소멸) 중일 때만 깊이를 끈다.
+    const writesDepth = visual.opacity >= 1;
+    if (material.transparent !== transparent || material.depthWrite !== writesDepth) {
       material.transparent = transparent;
-      material.depthWrite = !transparent;
+      material.depthWrite = writesDepth;
       material.needsUpdate = true;
     }
     haloMaterial.current.opacity = glow.haloOpacity * opacity;

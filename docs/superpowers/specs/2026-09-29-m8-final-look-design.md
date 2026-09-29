@@ -44,6 +44,10 @@
 
 1920×1080(dpr 1)에서 전체 파이프라인 프레임 시간은 중앙값 4.5 ms, p90 5.2 ms 다. 빌드 크기는 1.36 MB → 1.47 MB.
 
+### 2.2 검토에서 확인한 점
+
+배경 `#03040a` 는 ACES 를 거치면 순검정에 가까워진다 (허용). HiDPI(dpr 1.5·2)와 반정밀 렌더 타깃 미지원 환경은 측정·탐지하지 않았다 → M9.
+
 Focus 시 초점 천체와 위성은 선명하고 배경 천체와 별은 흐려졌다. Esc 뒤 다시 선명해졌다. 카메라 가까이의 먼지는 몇 픽셀 크기의 점으로 보였고 Bloom 으로 번지지 않았다(휘도가 임계값보다 훨씬 낮다).
 
 ## 3. 확정된 결정
@@ -72,7 +76,8 @@ Focus 시 초점 천체와 위성은 선명하고 배경 천체와 별은 흐려
 
 - `EffectComposer` 는 `SceneRoot` 안, 컨텍스트 제공자 아래에 마운트한다. 초점 상태(`FocusFrame`)를 읽기 위해서다.
 - composer 의 `multisampling` 은 기본값(8)을 쓴다. 2.1절의 1080p 프레임 시간은 이 값으로 잰 것이다.
-- 톤 매핑은 효과 하나로만 한다. 렌더러의 `toneMapping` 은 렌더 타깃에 그릴 때 적용되지 않으므로 그대로 두어도 이중 적용되지 않는다.
+- 톤 매핑은 효과 하나로만 한다. composer 의 장면은 렌더 타깃에 그려지고, 렌더 타깃에 그릴 때 three 는 재질에 톤 매핑을 적용하지 않는다. 또 `@react-three/postprocessing` 은 마운트되어 있는 동안 `gl.toneMapping` 을 `NoToneMapping` 으로 강제한다. 따라서 `ToneMapping` 효과가 유일한 톤 매핑이다. composer 밖에서 그리는 것은 톤 매핑을 받지 못하므로 D43 의 전제(모든 재질이 composer 안에서 그려진다)가 중요하다.
+- 세 효과(심도, Bloom, 톤 매핑)는 래퍼가 하나의 `EffectPass` 로 합친다. Bloom 은 심도를 거치지 않은 선명한 장면을 읽고, 그 결과가 심도 결과 뒤에 더해진다.
 
 ## 5. Bloom (D44)
 
@@ -96,6 +101,8 @@ Focus 시 초점 천체와 위성은 선명하고 배경 천체와 별은 흐려
 ## 8. 초점 dim 공용화 (D46, `scene/interaction.ts`)
 
 `ProcessNode.tsx` 의 `dimFor(focus, key)`(A→B 전환 중 `focus.t` 로 교차 페이드)를 `interaction.ts` 로 옮겨 export 한다. `ProcessNode` 와 `FlowStreams` 가 이것을 쓴다. `FlowStreams` 의 자체 `dimFor` 는 지운다. 동작은 ProcessNode 의 현재 동작 그대로다.
+
+초점 dim 으로만 투명해진 천체는 `depthWrite` 를 켠 채로 둔다(존재 페이드 중일 때만 끈다). 심도가 깊이로 흐림을 정하므로, 그래야 A→B 이동 중에도 심도가 끊기지 않고 이어진다.
 
 ## 9. 먼지 크기
 

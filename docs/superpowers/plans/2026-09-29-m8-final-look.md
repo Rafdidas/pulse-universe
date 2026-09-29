@@ -358,9 +358,13 @@ export function ProcessNode({ nodeKey, account }: Props) {
     material.opacity = opacity;
     // 불투명할 때는 transparent 를 끈다. 정렬 비용과 깊이 문제를 피한다.
     const transparent = opacity < 1;
-    if (material.transparent !== transparent) {
+    // 초점 dim 으로만 투명해진 천체는 깊이를 계속 쓴다. 심도(M8)가 깊이로 흐림을 정하므로,
+    // 깊이를 끄면 초점이 옮겨 가는 동안 천체가 통째로 흐려졌다 갑자기 선명해진다.
+    // 존재 페이드(생성·소멸) 중일 때만 깊이를 끈다.
+    const writesDepth = visual.opacity >= 1;
+    if (material.transparent !== transparent || material.depthWrite !== writesDepth) {
       material.transparent = transparent;
-      material.depthWrite = !transparent;
+      material.depthWrite = writesDepth;
       material.needsUpdate = true;
     }
     haloMaterial.current.opacity = glow.haloOpacity * opacity;
@@ -655,7 +659,7 @@ git commit -m "refactor(web): share the focus dim so flows cross-fade with bodie
 
 R3F·postprocessing 사항 (코드가 이미 반영하고 있다):
 - `EffectComposer` 는 양수 우선순위의 useFrame 으로 렌더를 맡는다. 기존 useFrame 은 전부 음수이므로 먼저 돈다.
-- composer 는 장면을 렌더 타깃에 그린다. three 는 렌더 타깃에 그릴 때 재질에서 톤 매핑을 하지 않으므로 `ToneMapping` 효과가 유일한 톤 매핑이다.
+- composer 는 장면을 렌더 타깃에 그린다. three 는 렌더 타깃에 그릴 때 재질에서 톤 매핑을 하지 않고, 래퍼는 마운트 중 `gl.toneMapping` 을 `NoToneMapping` 으로 강제하므로 `ToneMapping` 효과가 유일한 톤 매핑이다. 세 효과는 하나의 `EffectPass` 로 합쳐진다.
 - `DepthOfFieldEffect.target` 에 Vector3 를 주면 효과가 매 렌더에 카메라와의 거리로 초점 거리를 계산한다. `focusRange` 는 월드 단위다.
 
 - [ ] **Step 1: 의존성 추가**
@@ -725,8 +729,12 @@ interface Controls {
 }
 
 // M8 스펙 4절. 장면을 선형 HDR 버퍼에 그린 뒤 심도 → Bloom → ACES 를 한 번씩 거친다.
-// 톤 매핑은 여기 한 곳에서만 한다 — 렌더 타깃에 그릴 때 three 는 재질에서 톤 매핑을
-// 하지 않는다.
+// 세 효과는 래퍼가 하나의 EffectPass 로 합친다. Bloom 은 심도를 거치지 않은 선명한
+// 장면 입력을 읽고, 그 결과가 심도 결과 뒤에 더해진다.
+// 톤 매핑은 여기 한 곳에서만 한다. composer 의 장면은 렌더 타깃에 그려지고, 렌더 타깃에
+// 그릴 때 three 는 재질에 톤 매핑을 적용하지 않는다. 또 @react-three/postprocessing 은
+// 마운트되어 있는 동안 gl.toneMapping 을 NoToneMapping 으로 강제한다. 따라서 ToneMapping
+// 효과가 유일한 톤 매핑이며, composer 밖에서 그리는 것은 톤 매핑을 받지 못한다.
 export function PostEffects() {
   const { focus } = useSceneContext();
   const depthOfField = useRef<DepthOfFieldEffect>(null);
