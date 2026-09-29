@@ -134,6 +134,8 @@ export function SceneRoot() {
       if (sessionChanged) {
         // 두 프레임 사이에 hello 와 다음 스냅샷이 함께 도착해 null 프레임을 못 봤다.
         // 이전 세션의 장면·초점을 비우고 이 스냅샷을 기준선으로 삼는다.
+        // 레이아웃은 일부러 비우지 않는다. 엔진이 재시작해도 대부분의 name:pid key 가
+        // 살아남으므로 천체가 있던 자리에 그대로 있다 (null 프레임 경로와 다른 점).
         presence.reset();
         consumer.reset();
         pool.clear();

@@ -143,6 +143,15 @@ describe('LifecycleConsumer', () => {
       expect(consumer.consume(snap(3, [a, b]))).toEqual([]);
     });
 
+    it('births only once per spawn even if the key drops out and re-enters', () => {
+      const a = group('a.exe', 10);
+      const b = group('b.exe', 20);
+      const consumer = primed([a]);
+      expect(consumer.consume(snap(2, [a, b], [20]))).toHaveLength(1);
+      expect(consumer.consume(snap(3, [a]))).toEqual([]);
+      expect(consumer.consume(snap(4, [a, b]))).toEqual([]);
+    });
+
     it('never births a key that was already listed', () => {
       const a = group('a.exe', 10);
       const consumer = primed([a]);

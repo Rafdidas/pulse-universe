@@ -76,6 +76,8 @@ export class LifecycleConsumer {
       for (const group of snapshot.groups) {
         if (!previousKeys.has(group.key) && this.recentSpawns.has(group.root_pid)) {
           events.push({ kind: 'group-born', key: group.key, pid: group.root_pid });
+          // 생성 하나는 한 번만 연출한다. 창 안에서 목록을 나갔다 다시 들어와도 다시 내지 않는다.
+          this.recentSpawns.delete(group.root_pid);
         }
       }
       for (const spawned of snapshot.lifecycle.spawned) {
