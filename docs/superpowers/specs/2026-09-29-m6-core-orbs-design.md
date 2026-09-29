@@ -68,7 +68,7 @@ corePosition(index, n) = (r·cos θ, 0, r·sin θ),  θ = 2π·index / n
 
 ### 5.2 일그러짐
 
-정점을 법선 방향으로 `amplitude × snoise(normal × 1.8 + time × speed)` 만큼 민다.
+정점을 법선 방향으로 `amplitude × snoise(normal × 1.8 + offset)` 만큼 민다. `offset` 은 JS 에서 `offset += speed(load) × dt` 로 **누적**한다(`advanceNoiseOffset`). `시각 × speed(load)` 로 넘기면 `performance.now()` 가 수천 초일 때 부하가 조금만 바뀌어도 오프셋이 크게 튀어 Orb 가 떤다 — M4 맥박 위상과 같은 이유다.
 
 ```
 amplitude(load) = 0.04 + 0.28 × load²     대기 5%: 0.041, 50%: 0.11, 90%: 0.27
@@ -79,13 +79,15 @@ speed(load)     = 0.25 + 1.75 × load
 
 ### 5.3 색
 
-부하 0 → 0.5 → 1 을 세 색으로 잇는다 (선형, RGB):
+부하 0 → 0.5 → 1 을 세 색으로 잇는다. **HSL 로 섞고 색조는 증가 방향으로만 돈다** (파랑 → 보라 → 자홍 → 주황):
 
 ```
-COLD  #3fa9f5   (0.0)
-WARM  #ff8a3d   (0.5)
-HOT   #ffe3a0   (1.0)
+COLD  h 205°  s 0.90  l 0.60   (0.0)  파랑
+WARM  h 382°  s 1.00  l 0.62   (0.5)  주황 (382 = 22°)
+HOT   h 402°  s 1.00  l 0.82   (1.0)  밝은 노랑흰색 (402 = 42°)
 ```
+
+시제품에서 처음에는 RGB 로 섞었는데, 파랑과 주황 사이가 회색이 되어 부하가 조금 있는 코어가 "식은" 것처럼 보였다. HSL 경로는 중간이 보라·자홍이라 달아오르는 것처럼 읽힌다. 테스트가 전 구간에서 채도(최대−최소 채널 > 0.3)를 확인한다.
 
 ### 5.4 발광
 
@@ -98,7 +100,7 @@ Bloom 은 M8 이다.
 
 ### 5.5 셰이더 uniform
 
-`uTime`(초), `uAmplitude`, `uSpeed`, `uColor`(vec3), `uRim`, `uOpacity`(Focus 로 어두워질 때). 매 프레임 JS 에서 값을 넣고 셰이더는 계산만 한다 — 매핑은 전부 5.1~5.4 의 순수 함수다.
+`uOffset`(누적 노이즈 오프셋), `uAmplitude`, `uColor`(vec3), `uRim`, `uOpacity`(Focus 로 어두워질 때). 매 프레임 JS 에서 값을 넣고 셰이더는 계산만 한다 — 매핑은 전부 5.1~5.4 의 순수 함수다.
 
 ## 6. 코어 불꽃 (`visual/coreSparks.ts`, `scene/CoreSparks.tsx`)
 
@@ -107,7 +109,7 @@ SPARKS_PER_CORE = 24
 activeSparks(load) = round(load × 24)
 ```
 
-불꽃 i 는 제 코어 둘레를 돈다. 궤도 반지름 `orbRadius × (1.3 ~ 2.2)`, 궤도면 기울기·위상은 (코어 id, i) 해시, 각속도 `0.6 + 2.0 × load` rad/s. 위치는 `sparkPosition(coreIndex, i, center, orbRadius, load, timeSec)` 순수 함수다. 켜진 불꽃만 앞에서부터 버퍼에 채운다(M5 `Particles` 와 같은 방식). 최대 28 × 24 = 672개 — 코어가 64개면 1536개. 버퍼는 코어 수 × 24 로 잡는다.
+불꽃 i 는 제 코어 둘레를 돈다. 궤도 반지름 `orbRadius × (1.3 ~ 2.2)`, 궤도면 기울기·초기 위상은 (코어 index, i) 해시. 코어마다 궤도 위상을 **누적**한다: `phase += (0.6 + 2.0 × load) × dt` (`advanceSparkPhase`, 5.2 와 같은 이유). 위치는 `sparkPosition(coreIndex, i, center, orbRadius, orbitPhase)` 순수 함수다. 입자 크기는 0.3 (시제품에서 0.18 은 카메라 거리 58 에서 거의 보이지 않았다). 켜진 불꽃만 앞에서부터 버퍼에 채운다(M5 `Particles` 와 같은 방식). 최대 28 × 24 = 672개 — 코어가 64개면 1536개. 버퍼는 코어 수 × 24 로 잡는다.
 
 ## 7. ambient 먼지 (`visual/ambient.ts`, `scene/AmbientDust.tsx`)
 
@@ -178,8 +180,8 @@ web/src/scene/
 | 대상 | 검증 |
 |---|---|
 | `coreRing` | 28 → 반지름 28, 64 → 45.8, 이웃 간격, y = 0, 결정성, 첫 코어는 +x |
-| `coreMapping` | 5절 표의 수치, load 자르기(음수·100 초과), 색 3단의 양 끝과 중간 |
-| `coreSparks` | 켜지는 수, 궤도 반지름 범위, 결정성, 시간에 따라 움직임 |
+| `coreMapping` | 5절 표의 수치, load 자르기(음수·100 초과), 색 3단의 양 끝·중간 색조, 전 구간 회색 없음, HSL→RGB 변환, 노이즈 오프셋 누적 |
+| `coreSparks` | 켜지는 수, 궤도 반지름 범위, 결정성, 위상에 따라 움직임, 위상 누적, 부하가 바뀌어도 한 프레임에 튀지 않음 |
 | `ambient` | 개수 상한, 반지름 범위, 결정성 |
 | `presence` version | 추가·삭제 시 증가, 값 갱신·진행만으로는 불변, reset 시 증가 |
 | 셰이더 | jsdom 에서 컴파일할 수 없다 — 브라우저에서 확인 |
