@@ -10,8 +10,8 @@ import { FlowTracker, MAX_EDGES, edgeStrength, type FlowEdge } from '../visual/f
 import { floatingPosition, type Vec3 } from '../visual/layout';
 import { colorFor } from '../visual/mapping';
 import { FRAME_PRIORITY } from './framePriority';
-import { DIM_DEPTH } from './interaction';
-import { useSceneContext, type FocusFrame, type Hovered } from './sceneContext';
+import { dimFor } from './interaction';
+import { useSceneContext, type Hovered } from './sceneContext';
 
 // M7 스펙 7절.
 const SEGMENTS = 24;
@@ -28,15 +28,6 @@ const from: Vec3 = { x: 0, y: 0, z: 0 };
 const to: Vec3 = { x: 0, y: 0, z: 0 };
 const a: Vec3 = { x: 0, y: 0, z: 0 };
 const b: Vec3 = { x: 0, y: 0, z: 0 };
-
-// 초점과 무관한 선은 다른 천체와 같은 비율로 어두워진다.
-function dimFor(focus: FocusFrame, group: string): number {
-  const center = focus.key ?? focus.previousKey;
-  if (center === null || center === group) {
-    return 1;
-  }
-  return 1 - DIM_DEPTH * focus.weight;
-}
 
 // 호버한 그룹·코어와 이어진 선만 밝다. 호버가 없거나 위성이면 전부 밝다.
 function highlightFor(hovered: Hovered, edge: FlowEdge, coreIndex: number): number {
