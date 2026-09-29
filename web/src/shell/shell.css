@@ -123,3 +123,19 @@
 .focus-panel td:first-child {
   text-align: left;
 }
+
+/* M9 성능 표시 (P). 포인터 입력을 가로막지 않는다. */
+.perf-meter {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  padding: 6px 9px;
+  background: rgba(20, 24, 29, 0.85);
+  border: 1px solid #2a313a;
+  border-radius: 4px;
+  color: #c9d3de;
+  font: 12px/1.5 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  white-space: pre;
+  pointer-events: none;
+  z-index: 10;
+}
