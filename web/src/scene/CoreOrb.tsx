@@ -21,6 +21,7 @@ import {
   rimIntensity,
 } from '../visual/coreMapping';
 import { corePosition } from '../visual/coreRing';
+import { orbGain } from '../visual/postfx';
 import { coreFragmentShader, coreVertexShader } from './coreShader';
 import { CLICK_SLOP, DIM_DEPTH } from './interaction';
 import { useSceneContext } from './sceneContext';
@@ -95,7 +96,9 @@ export function CoreOrb({ index, count }: Props) {
     const [r, g, b] = coreColor(load);
     u.uOffset.value = noiseOffset.current;
     u.uAmplitude.value = distortion(load);
-    (u.uColor.value as Color).setRGB(r, g, b);
+    // 장면은 선형 HDR 버퍼에 그려진다. sRGB 값을 선형으로 바꾸고, 뜨거운 코어만
+    // Bloom 임계값을 넘도록 부하에 비례해 밝힌다 (M8 D47).
+    (u.uColor.value as Color).setRGB(r, g, b, SRGBColorSpace).multiplyScalar(orbGain(load));
     u.uRim.value = rimIntensity(load) * dim;
     u.uOpacity.value = dim;
     // 어둡지 않을 때는 불투명 패스에 둔다. 불투명 패스가 깊이를 먼저 써야 불꽃·먼지가
@@ -107,7 +110,7 @@ export function CoreOrb({ index, count }: Props) {
       material.current.needsUpdate = true;
     }
 
-    // coreColor 는 sRGB 값이다. 본체 셰이더는 그대로 보여 주므로 후광도 sRGB 로 읽어야 색이 맞는다.
+    // coreColor 는 sRGB 값이다. 본체와 같이 선형으로 바꿔 넣는다.
     haloMaterial.current.color.setRGB(r, g, b, SRGBColorSpace);
     haloMaterial.current.opacity = coreHaloOpacity(load) * dim;
   });

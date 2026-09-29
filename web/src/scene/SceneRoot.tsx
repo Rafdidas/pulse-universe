@@ -28,6 +28,7 @@ import { useFocusStore } from './focusStore';
 import { FRAME_PRIORITY } from './framePriority';
 import { nodeIdsOf, parseNodeId } from './nodeList';
 import { Particles } from './Particles';
+import { PostEffects } from './PostEffects';
 import { ProcessNode } from './ProcessNode';
 import { Satellites } from './Satellites';
 import {
@@ -213,6 +214,7 @@ export function SceneRoot() {
       <CoreSparks />
       <AmbientDust />
       <FlowStreams />
+      <PostEffects />
       <Particles pool={pool} />
       {liveHovered !== null && <Tooltip target={liveHovered} />}
     </SceneContext.Provider>

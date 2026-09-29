@@ -6,10 +6,13 @@
 //   satellites  위성 위치 (Focus 진행도가 정해진 뒤)
 //   tooltip     툴팁 anchor (위성 위치가 정해진 뒤, Html 이 투영하기 전)
 //   particles   입자 버퍼 (모든 기준점이 정해진 뒤)
+//   postfx      심도 초점·세기 (카메라 target 과 Focus 강도가 정해진 뒤). 렌더는
+//               EffectComposer 가 양수 우선순위에서 맡는다.
 export const FRAME_PRIORITY = {
   scene: -1,
   camera: -0.8,
   satellites: -0.6,
   tooltip: -0.4,
   particles: -0.2,
+  postfx: -0.1,
 } as const;

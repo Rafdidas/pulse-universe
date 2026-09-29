@@ -1,0 +1,56 @@
+import { useFrame } from '@react-three/fiber';
+import { Bloom, DepthOfField, EffectComposer, ToneMapping } from '@react-three/postprocessing';
+import type { DepthOfFieldEffect } from 'postprocessing';
+import { ToneMappingMode } from 'postprocessing';
+import { useRef } from 'react';
+import { HalfFloatType, type Vector3 } from 'three';
+
+import {
+  BLOOM_INTENSITY,
+  BLOOM_RADIUS,
+  BLOOM_SMOOTHING,
+  BLOOM_THRESHOLD,
+  FOCUS_RANGE,
+  bokehFor,
+} from '../visual/postfx';
+import { FRAME_PRIORITY } from './framePriority';
+import { useSceneContext } from './sceneContext';
+
+// drei OrbitControls(makeDefault)가 등록하는 controls 에서 쓰는 부분만.
+interface Controls {
+  target: Vector3;
+}
+
+// M8 스펙 4절. 장면을 선형 HDR 버퍼에 그린 뒤 심도 → Bloom → ACES 를 한 번씩 거친다.
+// 톤 매핑은 여기 한 곳에서만 한다 — 렌더 타깃에 그릴 때 three 는 재질에서 톤 매핑을
+// 하지 않는다.
+export function PostEffects() {
+  const { focus } = useSceneContext();
+  const depthOfField = useRef<DepthOfFieldEffect>(null);
+
+  // 초점은 OrbitControls 의 target 이다. Focus 중에는 카메라 연출이 target 을 초점
+  // 천체로 옮기므로 초점 대상의 좌표를 따로 구하지 않는다 (스펙 7절).
+  useFrame((state) => {
+    const effect = depthOfField.current;
+    if (effect === null) {
+      return;
+    }
+    const controls = state.controls as unknown as Controls | null;
+    effect.target = controls === null ? null : controls.target;
+    effect.bokehScale = bokehFor(focus.weight);
+  }, FRAME_PRIORITY.postfx);
+
+  return (
+    <EffectComposer frameBufferType={HalfFloatType}>
+      <DepthOfField ref={depthOfField} focusRange={FOCUS_RANGE} bokehScale={0} />
+      <Bloom
+        mipmapBlur
+        luminanceThreshold={BLOOM_THRESHOLD}
+        luminanceSmoothing={BLOOM_SMOOTHING}
+        intensity={BLOOM_INTENSITY}
+        radius={BLOOM_RADIUS}
+      />
+      <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+    </EffectComposer>
+  );
+}

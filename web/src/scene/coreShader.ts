@@ -3,7 +3,7 @@
 //
 // uOffset    노이즈 시간 오프셋 (JS 에서 누적, advanceNoiseOffset)
 // uAmplitude 정점 변위 진폭 (distortion)
-// uColor     부하 색 (coreColor)
+// uColor     부하 색 (coreColor 를 선형으로 바꾼 값 × orbGain, 선형 HDR)
 // uRim       가장자리 발광 세기 (rimIntensity)
 // uOpacity   Focus 로 어두워질 때의 불투명도
 
