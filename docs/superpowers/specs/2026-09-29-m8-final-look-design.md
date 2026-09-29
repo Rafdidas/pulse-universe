@@ -1,7 +1,7 @@
 # M8 — 포스트프로세싱 + 비주얼 마감 설계
 
 - 작성일: 2026-09-29
-- 상태: 승인 대기
+- 상태: 승인됨 (시제품 측정 반영)
 - 선행: 계약서 `2026-09-22-pulse-universe-contract-design.md`, M4~M7 스펙, M1~M7 구현 (`main`)
 - 범위: 장면 전체에 후처리(Bloom, Focus 중 심도, ACES 톤 매핑)를 한 번 거치게 하고, M6·M7 에서 넘긴 룩 문제를 정리한다. 엔진은 바꾸지 않는다.
 
@@ -31,6 +31,21 @@
 - 톤 매핑 효과 없이 composer 만 두면 ACES 가 빠져 천체 색이 옅어졌다. composer 는 장면을 렌더 타깃에 그리고, three 는 기본 프레임버퍼에 그릴 때만 재질에서 톤 매핑을 적용하기 때문이다.
 - 심도를 항상 켜면 개요 화면의 천체와 별이 뭉개져 읽을 수 없었다.
 
+### 2.1 시제품 측정 (확정 값 적용 후)
+
+장면의 재질에서 선형 휘도를 추정했다. 천체는 `lum(emissive) × emissiveIntensity + 0.2 × lum(color)`, Orb 는 `lum(uColor) × (0.8 + uRim)` 이다 (`orbGain` 적용 후).
+
+| 상태 | 천체 상위 휘도 | Orb 상위 휘도 |
+|---|---|---|
+| 대기 | 0.41, 0.36, 0.33, 0.28 … (40개 모두 0.5 미만) | 0.46, 0.46, 0.39 … (28개 모두 0.5 미만) |
+| 4코어 부하 | 0.74, 0.71, 0.69, 0.68, 그다음 0.33 | 2.38, 2.16, 1.81, 1.63, 1.61, 그다음 0.48 |
+
+임계값 0.5 (0.75 에서 완전히 번짐)이면 대기 중에는 천체·Orb 가 번지지 않고(기존 후광만 보인다), 부하 중에는 바쁜 천체 4개와 뜨거운 코어 5개가 번진다. 둘 사이의 간격이 넓어 임계값이 흔들려도 결과가 같다.
+
+1920×1080(dpr 1)에서 전체 파이프라인 프레임 시간은 중앙값 4.5 ms, p90 5.2 ms 다. 빌드 크기는 1.36 MB → 1.47 MB.
+
+Focus 시 초점 천체와 위성은 선명하고 배경 천체와 별은 흐려졌다. Esc 뒤 다시 선명해졌다. 카메라 가까이의 먼지는 몇 픽셀 크기의 점으로 보였고 Bloom 으로 번지지 않았다(휘도가 임계값보다 훨씬 낮다).
+
 ## 3. 확정된 결정
 
 | # | 결정 | 이유 |
@@ -56,27 +71,27 @@
 ```
 
 - `EffectComposer` 는 `SceneRoot` 안, 컨텍스트 제공자 아래에 마운트한다. 초점 상태(`FocusFrame`)를 읽기 위해서다.
-- composer 의 `multisampling` 은 기본값을 쓰고, 시제품에서 비용을 재어 정한다.
+- composer 의 `multisampling` 은 기본값(8)을 쓴다. 2.1절의 1080p 프레임 시간은 이 값으로 잰 것이다.
 - 톤 매핑은 효과 하나로만 한다. 렌더러의 `toneMapping` 은 렌더 타깃에 그릴 때 적용되지 않으므로 그대로 두어도 이중 적용되지 않는다.
 
 ## 5. Bloom (D44)
 
-- `luminanceThreshold`, `luminanceSmoothing`, `intensity`, mipmap `radius` 는 `visual/postfx.ts` 의 상수다.
+- `luminanceThreshold` 0.5, `luminanceSmoothing` 0.25, `intensity` 0.8, mipmap `radius` 0.7. `visual/postfx.ts` 의 상수다.
 - 목표: 대기 상태에서 번지는 것은 활동도가 높은 소수의 천체뿐이다. 부하를 걸면 뜨거운 코어, 그 코어로 가는 flow 선, 불꽃이 번진다. 한가한 천체, 먼지, 별은 번지지 않는다.
-- 값은 시제품에서 실제 엔진에 붙여 "대기 중 번지는 천체 수" 와 "부하 중 번지는 코어 수" 를 세며 정하고, 그 수를 계획에 적는다.
+- 값은 2.1절의 측정으로 정했다.
 
 ## 6. 코어 Orb 색 (D47, `scene/CoreOrb.tsx`, `visual/postfx.ts`)
 
 - `uColor` 는 `coreColor(load)` 의 sRGB 값을 `Color.setRGB(r, g, b, SRGBColorSpace)` 로 선형으로 바꿔 넣는다.
-- HDR 배율 `orbGain(load)` 을 곱한다. 한가한 코어는 1 근처(번지지 않음), 뜨거운 코어는 임계값을 넘는다. 값은 5절과 함께 정한다.
+- HDR 배율 `orbGain(load) = 1 + (ORB_GAIN_MAX − 1) × load²`, `ORB_GAIN_MAX = 2.2` 를 곱한다. 제곱이므로 한가한 코어는 1 근처(번지지 않음)에 머물고, 뜨거운 코어만 임계값을 넘는다.
 - 후광·불꽃은 이미 `SRGBColorSpace` 로 넣고 있다. 바꾸지 않는다.
 
 ## 7. 심도 (D45)
 
 - 초점 목표: `state.controls.target` (OrbitControls). Focus 중에는 카메라 연출이 이 target 을 초점 천체로 옮긴다. 초점 대상의 좌표를 따로 구하지 않는다.
-- 흐림 세기: `bokehFor(weight) = BOKEH_SCALE × clamp(weight, 0, 1)`. 개요 화면(weight 0)에서는 0 이다.
-- 초점 범위(`focusRange`)는 초점 천체와 그 위성이 선명하게 남는 값으로 시제품에서 정한다.
-- 매 프레임 `useFrame` 에서 효과 객체의 `target` 과 `bokehScale` 을 갱신한다. 우선순위는 카메라(-0.8) 뒤다.
+- 흐림 세기: `bokehFor(weight) = BOKEH_SCALE × clamp(weight, 0, 1)`, `BOKEH_SCALE = 4`. 개요 화면(weight 0)에서는 0 이다. NaN 은 0 으로 본다.
+- 초점 범위 `focusRange = 12` (월드 단위). 초점 천체와 그 위성이 선명하게 남는다.
+- 매 프레임 `useFrame` 에서 효과 객체의 `target` 과 `bokehScale` 을 갱신한다. 우선순위는 새 `FRAME_PRIORITY.postfx = -0.1` (모든 기준점이 정해진 뒤). 렌더 자체는 EffectComposer 가 양수 우선순위에서 맡는다.
 
 ## 8. 초점 dim 공용화 (D46, `scene/interaction.ts`)
 
@@ -84,7 +99,7 @@
 
 ## 9. 먼지 크기
 
-Bloom 을 켠 상태에서 카메라를 무리 가까이 옮겨, 먼지가 번진 얼룩으로 보이는지 시제품에서 확인한다. 보이면 먼지의 화면상 크기에 상한을 두고, 보이지 않으면 이 항목은 M9 로 넘긴다. 어느 쪽인지 계획에 적는다.
+시제품에서 확인했다(2.1절). 먼지는 Bloom 으로 번지지 않는다. 크기 상한은 M8 에서 두지 않고 M9 로 넘긴다.
 
 ## 10. 모듈 구조
 
@@ -96,6 +111,8 @@ web/src/scene/ProcessNode.tsx    공용 dimFor 사용
 web/src/scene/FlowStreams.tsx    공용 dimFor 사용
 web/src/scene/CoreOrb.tsx        선형 uColor × orbGain
 web/src/scene/SceneRoot.tsx      PostEffects 마운트
+web/src/scene/framePriority.ts   postfx 우선순위
+web/src/scene/coreShader.ts      uColor 주석(선형 HDR)
 web/package.json                 postprocessing 6.39.5, @react-three/postprocessing 3.1.3
 ```
 
@@ -110,8 +127,8 @@ web/package.json                 postprocessing 6.39.5, @react-three/postprocess
 
 | 대상 | 방식 |
 |---|---|
-| `bokehFor`, `orbGain` | node 단위 테스트: 경계(0, 1), 단조성, 범위 밖 입력 자르기 |
-| 공용 `dimFor` | node 단위 테스트: 초점 없음, 초점 그룹, 무관 그룹, A→B 전환 중 교차 페이드 |
+| `bokehFor`, `orbGain` | node 단위 테스트 (`tests/visual/postfx.test.ts`): 경계(0, 1), 단조성, 범위 밖 입력 자르기 |
+| 공용 `dimFor` | jsdom 프로젝트 단위 테스트 (`tests/focusDim.test.ts`): 초점 없음, 초점 그룹, 무관 그룹, A→B 전환 중 교차 페이드 |
 | 장면 | 자동 테스트하지 않는다(계약서 10절). 컨트롤러가 실제 엔진에 붙여 확인 |
 
 ## 13. 완료 조건
