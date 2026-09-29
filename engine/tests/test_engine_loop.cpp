@@ -177,7 +177,9 @@ TEST_CASE("the loop starts samples on a fixed period regardless of how long samp
     const double total =
         std::chrono::duration<double, std::milli>(starts.back() - starts.front()).count();
     // 옛 동작(샘플링 뒤 주기만큼 쉼)이면 시작 간격이 30 + 50 = 80 ms 이상, 합이 320 ms 이상이다.
-    REQUIRE(total >= 195.0);
+    // 첫 read() 는 스케줄러 선점(Windows 시간 조각 약 15.6 ms)으로 루프의 기준점보다 늦게
+    // 시작할 수 있어, 하한에 그만큼의 여유를 둔다. 옛 동작이면 어차피 320 ms 이상이다.
+    REQUIRE(total >= 180.0);
     REQUIRE(total < 280.0);
 }
 
