@@ -60,6 +60,13 @@ describe('focusStore', () => {
     store.toggle('a.exe:1');
     expect(useFocusStore.getState().focusedKey).toBeNull();
   });
+
+  it('moves the focus when another key is toggled', () => {
+    const store = useFocusStore.getState();
+    store.toggle('a');
+    store.toggle('b');
+    expect(useFocusStore.getState().focusedKey).toBe('b');
+  });
 });
 
 describe('FocusPanel', () => {

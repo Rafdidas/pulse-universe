@@ -33,6 +33,17 @@ const CLICK_SLOP = 2;
 
 // 초점과 무관한 천체일수록 1 보다 작다.
 function dimFor(focus: FocusFrame, key: string): number {
+  // 초점이 A 에서 B 로 옮겨 가는 동안은 weight 가 1 로 유지되므로, 카메라 전환
+  // 진행도 t 로 A 는 어두워지고 B 는 밝아지게 섞는다.
+  if (focus.key !== null && focus.previousKey !== null && focus.previousKey !== focus.key) {
+    if (key === focus.key) {
+      return 1 - DIM_DEPTH * focus.weight * (1 - focus.t);
+    }
+    if (key === focus.previousKey) {
+      return 1 - DIM_DEPTH * focus.weight * focus.t;
+    }
+    return 1 - DIM_DEPTH * focus.weight;
+  }
   const center = focus.key ?? focus.previousKey;
   if (center === null || center === key) {
     return 1;

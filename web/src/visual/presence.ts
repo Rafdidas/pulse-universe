@@ -109,8 +109,10 @@ export class PresenceTracker<T> {
         continue;
       }
       if (died.has(entry.key)) {
+        // 나타나는 중에 종료됐으면 지금 불투명도에서 이어서 무너진다 (1 - p² 역산).
+        const opacity = presenceVisual(entry).opacity;
         entry.phase = 'collapsing';
-        entry.startSec = nowSec;
+        entry.startSec = nowSec - Math.sqrt(1 - opacity) * COLLAPSE_SEC;
       } else {
         // 순위 이탈. 지금 불투명도에서 이어서 어두워진다.
         const opacity = presenceVisual(entry).opacity;

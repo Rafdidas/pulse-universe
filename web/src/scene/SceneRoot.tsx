@@ -57,10 +57,13 @@ function burstFor(
   const radius = radiusFor(group.mem_mb);
   const color = rgbOf(group);
   const seed = Math.floor(hash01(`${event.kind}:${event.pid}`, seq) * 0x100000000);
-  const groupAnchor: BurstAnchor = { kind: 'group', key: event.key };
+  const groupAnchor: BurstAnchor = { kind: 'group', key: event.key, groupKey: event.key };
   // Focus 중인 그룹의 자식이면 그 위성 자리에서 재생한다 (M5 스펙 D30).
+  // 위성은 focus 프레임 값의 key 를 따르므로 스토어가 아니라 그것으로 판단한다.
   const childAnchor: BurstAnchor =
-    focusedKey === event.key ? { kind: 'satellite', key: String(event.pid) } : groupAnchor;
+    focusedKey === event.key
+      ? { kind: 'satellite', key: String(event.pid), groupKey: event.key }
+      : groupAnchor;
 
   switch (event.kind) {
     case 'group-born':
@@ -82,6 +85,8 @@ export function SceneRoot() {
   const [nodeIds, setNodeIds] = useState<string[]>([]);
   const [hovered, setHovered] = useState<Hovered>(null);
   const signature = useRef('');
+  // 마지막으로 본 세션. null 프레임을 못 보고 세션이 바뀌어도 장면을 비우기 위해.
+  const lastSession = useRef<string | null>(useSnapshotStore.getState().session);
 
   const context = useMemo<SceneContextValue>(
     () => ({
@@ -115,6 +120,9 @@ export function SceneRoot() {
     updateFrameCache(cache, frame, now);
     const nowSec = now / 1000;
 
+    const sessionChanged = state.session !== lastSession.current;
+    lastSession.current = state.session;
+
     if (frame === null) {
       // 세션이 바뀌었거나 버전 불일치로 스토어가 비었다. 다음 스냅샷은 다시
       // "이미 있던 것" 으로 시작한다.
@@ -123,6 +131,14 @@ export function SceneRoot() {
       pool.clear();
       context.events.replace([]);
     } else {
+      if (sessionChanged) {
+        // 두 프레임 사이에 hello 와 다음 스냅샷이 함께 도착해 null 프레임을 못 봤다.
+        // 이전 세션의 장면·초점을 비우고 이 스냅샷을 기준선으로 삼는다.
+        presence.reset();
+        consumer.reset();
+        pool.clear();
+        useFocusStore.getState().clear();
+      }
       const events = consumer.consume(frame);
       context.events.replace(events);
       const born = new Set(events.filter((e) => e.kind === 'group-born').map((e) => e.key));
@@ -134,7 +150,7 @@ export function SceneRoot() {
         nowSec,
       );
 
-      const focusedKey = useFocusStore.getState().focusedKey;
+      const focusedKey = context.focus.key;
       for (const event of events) {
         const spec = burstFor(event, presence.get(event.key)?.value, focusedKey, frame.seq);
         if (spec !== null) {

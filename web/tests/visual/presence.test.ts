@@ -148,6 +148,21 @@ describe('PresenceTracker', () => {
   });
 });
 
+describe('a key that dies while still appearing', () => {
+  it('collapses from the opacity it had, not from full', () => {
+    const tracker = started('a');
+    tracker.update(items('a', 'x'), new Set(['x']), NONE, 10);
+    tracker.update(items('a', 'x'), NONE, NONE, 10 + FORM_SEC * 0.4);
+    const before = presenceVisual(tracker.get('x')!).opacity;
+    expect(before).toBeCloseTo(0.4, 6);
+
+    tracker.update(items('a'), NONE, new Set(['x']), 10 + FORM_SEC * 0.4);
+    const entry = tracker.get('x')!;
+    expect(entry.phase).toBe('collapsing');
+    expect(presenceVisual(entry).opacity).toBeCloseTo(before, 6);
+  });
+});
+
 describe('presenceVisual', () => {
   it('matches the spec table', () => {
     expect(presenceVisual({ phase: 'present', progress: 1 })).toEqual({ scale: 1, opacity: 1 });

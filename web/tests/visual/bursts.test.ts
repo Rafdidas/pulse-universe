@@ -16,7 +16,7 @@ const ORIGIN = { x: 0, y: 0, z: 0 };
 function spec(overrides: Partial<BurstSpec> = {}): BurstSpec {
   return {
     ...GROUP_FORM,
-    anchor: { kind: 'group', key: 'a.exe:1' },
+    anchor: { kind: 'group', key: 'a.exe:1', groupKey: 'a.exe:1' },
     radius: 2,
     color: [1, 1, 1],
     seed: 7,

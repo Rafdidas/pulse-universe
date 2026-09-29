@@ -17,7 +17,12 @@ function centerOf(burst: Burst, context: SceneContextValue): Vec3 | null {
     center =
       cache.timeSec === null ? undefined : floatingPosition(layout, burst.anchor.key, cache.timeSec);
   } else {
-    center = satellites.get(Number(burst.anchor.key))?.position;
+    // 위성이 아직 없거나 이미 사라졌으면 그룹 자리에서 재생한다.
+    center =
+      satellites.get(Number(burst.anchor.key))?.position ??
+      (cache.timeSec === null
+        ? undefined
+        : floatingPosition(layout, burst.anchor.groupKey, cache.timeSec));
   }
   if (center !== undefined) {
     burst.lastCenter = center;

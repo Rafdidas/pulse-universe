@@ -32,8 +32,9 @@ function toVec(v: Vector3): Vec3 {
 
 export function CameraRig() {
   const context = useSceneContext();
-  const camera = useThree((state) => state.camera);
-  const controls = useThree((state) => state.controls) as unknown as Controls | null;
+  // camera·controls 는 효과 안에서 get() 으로 읽는다. 의존성에 넣으면 전환 중에
+  // 바뀔 때 정리 함수가 트윈을 죽이고 재실행은 일찍 반환해 t·weight 가 멈춘다.
+  const get = useThree((state) => state.get);
   const focusedKey = useFocusStore((state) => state.focusedKey);
 
   // GSAP 이 직접 바꾸는 평범한 객체.
@@ -50,6 +51,8 @@ export function CameraRig() {
     if (focusedKey === null && focus.key === null) {
       return;
     }
+    const camera = get().camera;
+    const controls = get().controls as unknown as Controls | null;
     focus.begin(focusedKey);
 
     from.current = {
@@ -78,7 +81,7 @@ export function CameraRig() {
     return () => {
       animation.kill();
     };
-  }, [focusedKey, camera, controls, context]);
+  }, [focusedKey, get, context]);
 
   // 장면이 사라지면(대시보드로 전환) 초점도 푼다.
   useEffect(() => () => useFocusStore.getState().clear(), []);

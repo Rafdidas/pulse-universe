@@ -9,6 +9,8 @@ export type BurstKind = 'converge' | 'implode' | 'scatter';
 export interface BurstAnchor {
   kind: 'group' | 'satellite';
   key: string;
+  // 기준 그룹의 key. 그룹 기준점이면 key 와 같다. 위성이 없을 때 그룹 자리로 물러난다.
+  groupKey: string;
 }
 
 export interface BurstSpec {
