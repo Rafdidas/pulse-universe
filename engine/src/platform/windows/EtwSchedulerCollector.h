@@ -28,7 +28,7 @@ public:
 
     // 이름으로 세션을 멈춘다. 프로세스가 콘솔 종료 신호(Ctrl+C, 창 닫기)로 죽을 때
     // 소멸자가 돌지 못하므로 main 의 콘솔 핸들러가 부른다. 세션이 없어도 안전하다.
-    static void stopSessionByName();
+    static unsigned long stopSessionByName();
 
     ~EtwSchedulerCollector();
 

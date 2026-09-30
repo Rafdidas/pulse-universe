@@ -123,9 +123,9 @@ void WINAPI onEventRecord(PEVENT_RECORD record) {
 EtwSchedulerCollector::EtwSchedulerCollector()
     : properties_(makeProperties()), table_(kTicksPerSecond) {}
 
-void EtwSchedulerCollector::stopSessionByName() {
+unsigned long EtwSchedulerCollector::stopSessionByName() {
     std::vector<unsigned char> props = makeProperties();
-    ::ControlTraceW(0, kSessionName, asProperties(props), EVENT_TRACE_CONTROL_STOP);
+    return ::ControlTraceW(0, kSessionName, asProperties(props), EVENT_TRACE_CONTROL_STOP);
 }
 
 std::unique_ptr<EtwSchedulerCollector> EtwSchedulerCollector::start(std::string& error) {
@@ -147,15 +147,22 @@ std::unique_ptr<EtwSchedulerCollector> EtwSchedulerCollector::start(std::string&
 
     // 소유자가 없는 세션은 엔진이 강제 종료되며 커널에 남은 것이다. 같은 이름으로 다시
     // 열기 전에 멈춘다.
-    stopSessionByName();
+    const ULONG stopped = stopSessionByName();
 
     TRACEHANDLE session = 0;
     const ULONG started =
         ::StartTraceW(&session, kSessionName, asProperties(collector->properties_));
     if (started != ERROR_SUCCESS) {
-        error = started == ERROR_ACCESS_DENIED
-                    ? "ETW kernel events need administrator rights"
-                    : "StartTrace failed with error " + std::to_string(started);
+        if (started == ERROR_ACCESS_DENIED) {
+            error = "ETW kernel events need administrator rights";
+        } else if (started == ERROR_ALREADY_EXISTS && stopped == ERROR_ACCESS_DENIED) {
+            // 관리자가 아니면 남은 세션을 멈출 수 없고, StartTrace 는 권한 검사보다 먼저
+            // 이 오류를 돌려준다. 원인은 이전 실행이 남긴 세션이다.
+            error = "a trace session left by an earlier run is still active; "
+                    "run once as administrator to clear it";
+        } else {
+            error = "StartTrace failed with error " + std::to_string(started);
+        }
         return nullptr;
     }
     collector->session_ = session;
