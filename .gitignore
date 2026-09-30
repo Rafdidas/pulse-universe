@@ -24,3 +24,7 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
+
+# release packaging
+build-release/
+dist-release/
