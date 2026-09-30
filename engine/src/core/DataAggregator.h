@@ -31,6 +31,8 @@ private:
     GroupBuilder group_builder_;
     ProcessFilter filter_;
     LifecycleTracker lifecycle_;
+    // 실측 흐름(measuredFlows)도 추정과 같은 걸러내기를 쓴다.
+    FlowConfig flow_config_;
     FlowEstimator flow_estimator_;
     // 직전 스냅샷에 실린 그룹 key. 다음 선택에서 유지 보너스를 받는다.
     std::unordered_set<std::string> shown_keys_;

@@ -2,6 +2,8 @@
 
 #include <unordered_map>
 
+#include "core/MeasuredFlows.h"
+
 namespace pulse {
 namespace {
 
@@ -16,6 +18,7 @@ double toMb(uint64_t bytes) {
 DataAggregator::DataAggregator(unsigned core_count, AggregatorConfig cfg)
     : cpu_delta_(core_count),
       filter_(cfg.filter),
+      flow_config_(cfg.flow),
       flow_estimator_(cfg.flow) {}
 
 SystemSnapshot DataAggregator::aggregate(const RawSample& sample) {
@@ -127,8 +130,11 @@ SystemSnapshot DataAggregator::aggregate(const RawSample& sample) {
         shown_keys_.insert(g.key);
     }
 
-    // 7. 화면에 남은 그룹에 대해서만 흐름을 추정한다.
-    snapshot.flows = flow_estimator_.estimate(snapshot.groups, snapshot.cores);
+    // 7. 화면에 남은 그룹에 대해서만 흐름을 만든다. 실측 매핑이 실려 왔으면 그것을,
+    // 아니면 코어 부하로 추정한다 (ETW 스펙 6절).
+    snapshot.flows = sample.thread_mapping.has_value()
+                         ? measuredFlows(snapshot.groups, *sample.thread_mapping, flow_config_)
+                         : flow_estimator_.estimate(snapshot.groups, snapshot.cores);
 
     return snapshot;
 }

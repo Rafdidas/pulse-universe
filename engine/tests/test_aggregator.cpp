@@ -317,3 +317,34 @@ TEST_CASE("the very first selection has no incumbents", "[aggregate]") {
 
     REQUIRE(first.groups.at(0).name == "bigger.exe");
 }
+
+TEST_CASE("a sample carrying a thread mapping yields measured flows", "[aggregate][measured]") {
+    // ETW 스펙 6절: 실측 매핑이 실려 오면 추정 대신 그것으로 흐름을 만든다.
+    DataAggregator aggregator(2);
+    RawSample sample = makeSample({makeProcess(10, 0, "a.exe", 1000, 100ull * 1024 * 1024)}, 1000);
+    RawThreadMapping mapping;
+    mapping.window_seconds = 1.0;
+    mapping.run_times = {RawRunTime{10, 1, 0.5}};
+    sample.thread_mapping = mapping;
+
+    const auto snap = aggregator.aggregate(sample);
+
+    REQUIRE(snap.flows.size() == 1);
+    REQUIRE(snap.flows[0].group == "a.exe:10");
+    REQUIRE(snap.flows[0].core == 1);
+    REQUIRE(snap.flows[0].source == "measured");
+    REQUIRE_THAT(snap.flows[0].weight, Catch::Matchers::WithinAbs(0.5, 0.0001));
+}
+
+TEST_CASE("a sample without a thread mapping keeps estimating flows", "[aggregate][measured]") {
+    DataAggregator aggregator(2);
+    aggregator.aggregate(makeSample({makeProcess(10, 0, "a.exe", 1000, 100ull * 1024 * 1024)}, 1000));
+
+    const auto snap = aggregator.aggregate(
+        makeSample({makeProcess(10, 0, "a.exe", 1500, 100ull * 1024 * 1024)}, 2000));
+
+    REQUIRE_FALSE(snap.flows.empty());
+    for (const Flow& f : snap.flows) {
+        REQUIRE(f.source == "estimated");
+    }
+}

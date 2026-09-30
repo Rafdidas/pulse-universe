@@ -58,9 +58,9 @@ struct Flow {
     std::string group;  // ProcessGroup::key
     uint32_t core = 0;
     double weight = 0.0;
-    // M1 은 추정만 한다. ETW 수집기가 들어오면 "measured" 가 된다.
+    // FlowEstimator 는 "estimated", 실측 매핑(measuredFlows)은 "measured" 를 단다.
     // network/Serializer.h 의 HelloInfo::thread_mapping 이 프로토콜 계층에서
-    // 같은 값을 나른다 — 이걸 바꾸면 그쪽도 같이 바꿔야 한다.
+    // 연결 시점의 능력을 나른다 — 수집기가 살아 있는 동안 두 값은 같다 (ETW 스펙 8절).
     std::string source = "estimated";
 };
 
