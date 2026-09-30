@@ -2,6 +2,7 @@
 #include <shellapi.h>
 
 #include <cstdio>
+#include <exception>
 #include <filesystem>
 #include <string>
 #include <system_error>
@@ -29,7 +30,12 @@ std::filesystem::path webFolderNextToExe() {
 // 서버가 뜬 뒤 기본 브라우저로 화면을 연다 (인자 없이 실행했을 때만).
 void openBrowser(unsigned short port) {
     const std::wstring url = L"http://127.0.0.1:" + std::to_wstring(port) + L"/";
+    // ShellExecute 는 COM 이 초기화된 스레드에서 부르라고 안내된다.
+    const HRESULT com = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     ::ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    if (SUCCEEDED(com)) {
+        ::CoUninitialize();
+    }
 }
 
 // 콘솔이 곧바로 닫히는 더블클릭 실행에서는 실패 이유를 볼 수 없다. 대화상자로 한 번 알린다.
@@ -121,10 +127,16 @@ int runServe(pulse::ISystemReader& reader, const pulse::Options& options, bool o
                             static_cast<unsigned>(port));
             }
             std::fflush(stdout);
+            if (open_browser) {
+                openBrowser(port);
+            }
         });
 
     if (!result.message.empty()) {
         std::fprintf(stderr, "%s\n", result.message.c_str());
+        if (open_browser && result.exit_code != 0) {
+            showFailure(result.message);
+        }
     }
     return result.exit_code;
 }
@@ -142,7 +154,13 @@ int main(int argc, char** argv) {
         const std::filesystem::path web = webFolderNextToExe();
         std::error_code ec;
         const bool exists = !web.empty() && std::filesystem::is_directory(web, ec) && !ec;
-        launched_by_default = pulse::applyDefaultLaunch(options, web.string(), exists);
+        // path::string() 은 현재 코드 페이지로 바꿀 수 없는 경로에서 예외를 던진다.
+        // 죽는 대신 사용법 출력으로 물러난다.
+        try {
+            launched_by_default = pulse::applyDefaultLaunch(options, web.string(), exists);
+        } catch (const std::exception&) {
+            launched_by_default = false;
+        }
     }
 
     switch (launched_by_default ? pulse::ParseResult::Ok

@@ -28,6 +28,7 @@ Set-StrictMode -Version Latest
 
 $root = Split-Path -Parent $PSScriptRoot
 if ($OutDir -eq '') { $OutDir = Join-Path $root 'dist-release' }
+$OutDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutDir)
 $name = "pulse-universe-v$Version-win-x64"
 
 function Invoke-Native {
@@ -80,7 +81,7 @@ Invoke-Native 'cmake configure (x64-windows-static)' {
         -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 }
 Invoke-Native 'cmake build (Release)' {
-    cmake --build $buildDir --config Release --target pulse-engine
+    cmake --build $buildDir --config Release
 }
 $exe = Join-Path $buildDir 'Release\pulse-engine.exe'
 if (-not (Test-Path $exe)) { throw "engine exe missing: $exe" }

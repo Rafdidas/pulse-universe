@@ -17,7 +17,7 @@
 
 ## 다운로드해서 실행 (빌드 도구 필요 없음)
 
-[Releases](https://github.com/Rafdidas/pulse-universe/releases) 에서 `pulse-universe-vX.Y.Z-win-x64.zip` 을 받아 풀고 `Start Pulse Universe.bat` (또는 `pulse-engine.exe`)을 더블클릭하면 브라우저에 화면이 뜬다. 관리자 권한이 필요한 실측 흐름은 `Start Pulse Universe (Admin).bat`. 서명되지 않은 프로그램이라 처음에는 Windows 가 경고할 수 있다 — zip 안의 `README.txt` 에 대처법이 있다. 아래는 소스에서 직접 빌드하는 방법이다.
+[Releases](https://github.com/Rafdidas/pulse-universe/releases) 에서 `pulse-universe-vX.Y.Z-win-x64.zip` 을 받아 풀고 `Start Pulse Universe.bat` (또는 `pulse-engine.exe`)을 더블클릭하면 브라우저에 화면이 뜬다. 관리자 권한이 필요한 실측 흐름은 `Start Pulse Universe (Admin).bat` (UAC 창에서 '아니오'를 누르면 아무것도 뜨지 않는다). 서명되지 않은 프로그램이라 처음에는 Windows 가 경고할 수 있다 — zip 안의 `README.txt` 에 대처법이 있다. 아래는 소스에서 직접 빌드하는 방법이다.
 
 ## 가장 빠른 실행 (소스에서)
 

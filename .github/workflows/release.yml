@@ -39,20 +39,30 @@ jobs:
         shell: pwsh
         run: New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
 
-      - name: Test the frontend
-        shell: pwsh
+      - name: Install the frontend packages
         working-directory: web
-        run: |
-          npm ci
-          npm test
-          npm run typecheck
-          npm run lint
+        run: npm ci
+
+      - name: Test the frontend
+        working-directory: web
+        run: npm test
+
+      - name: Typecheck the frontend
+        working-directory: web
+        run: npm run typecheck
+
+      - name: Lint the frontend
+        working-directory: web
+        run: npm run lint
 
       - name: Build the zip
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
           ./scripts/package.ps1 -Version $version -SkipNpmCi
+
+      - name: Test the engine (the ETW tests skip without administrator rights)
+        run: engine/build-release/tests/Release/pulse-tests.exe
 
       - name: Publish the release
         shell: pwsh
