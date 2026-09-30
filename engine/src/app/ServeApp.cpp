@@ -58,6 +58,7 @@ ServeResult runServe(ISystemReader& reader, const ServeConfig& cfg,
     const HostInfo host = reader.hostInfo();
     hello.os = host.os;
     hello.elevated = host.elevated;
+    hello.thread_mapping = host.thread_mapping;
     hello.session = generateSessionId();
     server->setHello(std::make_shared<const std::string>(serializeHello(hello)));
 

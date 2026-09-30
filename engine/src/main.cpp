@@ -107,7 +107,22 @@ int main(int argc, char** argv) {
             return 2;
     }
 
-    pulse::WindowsSystemReader reader;
+    // ETW 스펙 8절. auto 와 measured 는 실측을 시도한다. 결과는 stderr 에 한 줄 남긴다 —
+    // --json 의 stdout 을 더럽히지 않는다.
+    const bool want_measured = options.mapping != pulse::Mapping::Estimated;
+    pulse::WindowsSystemReader reader(want_measured);
+    if (want_measured) {
+        if (reader.measuringThreads()) {
+            std::fprintf(stderr, "thread mapping: measured (ETW)\n");
+        } else if (options.mapping == pulse::Mapping::Measured) {
+            std::fprintf(stderr, "thread mapping: cannot measure - %s\n",
+                         reader.mappingError().c_str());
+            return 1;
+        } else {
+            std::fprintf(stderr, "thread mapping: estimated - %s\n",
+                         reader.mappingError().c_str());
+        }
+    }
 
     switch (options.mode) {
         case pulse::Mode::Dump:

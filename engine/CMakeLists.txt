@@ -23,6 +23,7 @@ add_library(pulse_core
   src/app/EngineLoop.cpp
   src/app/ServeApp.cpp
   src/platform/windows/WindowsSystemReader.cpp
+  src/platform/windows/EtwSchedulerCollector.cpp
   src/cli/TableFormatter.cpp
   src/cli/Options.cpp
   src/network/Serializer.cpp
@@ -32,7 +33,7 @@ add_library(pulse_core
 target_include_directories(pulse_core PUBLIC src)
 target_link_libraries(pulse_core PUBLIC Boost::json Boost::beast)
 if(WIN32)
-  target_link_libraries(pulse_core PUBLIC pdh psapi ws2_32 mswsock)
+  target_link_libraries(pulse_core PUBLIC pdh psapi ws2_32 mswsock advapi32)
 endif()
 
 if(WIN32)

@@ -177,8 +177,13 @@ Account accountForPid(uint32_t pid) {
 
 }  // namespace
 
-WindowsSystemReader::WindowsSystemReader() : core_count_(logicalCoreCount()) {
+WindowsSystemReader::WindowsSystemReader(bool measure_threads)
+    : core_count_(logicalCoreCount()) {
     enableDebugPrivilege();
+
+    if (measure_threads) {
+        collector_ = EtwSchedulerCollector::start(mapping_error_);
+    }
 
     PDH_HQUERY query = nullptr;
     if (::PdhOpenQueryW(nullptr, 0, &query) != ERROR_SUCCESS) {
@@ -214,12 +219,26 @@ HostInfo WindowsSystemReader::hostInfo() const {
     HostInfo info;
     info.os = "Windows";
     info.elevated = isProcessElevated();
+    info.thread_mapping = collector_ != nullptr ? "measured" : "estimated";
     return info;
+}
+
+bool WindowsSystemReader::measuringThreads() const {
+    return collector_ != nullptr;
+}
+
+const std::string& WindowsSystemReader::mappingError() const {
+    return mapping_error_;
 }
 
 RawSample WindowsSystemReader::read() {
     RawSample sample;
     sample.timestamp_ms = nowUnixMs();
+
+    // 실측 매핑 창. 수집 스레드가 멈췄으면 비어 있고, 흐름은 추정으로 돌아간다.
+    if (collector_ != nullptr) {
+        sample.thread_mapping = collector_->drain();
+    }
 
     // --- 프로세스 열거 ---
     const HANDLE snapshot = ::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);

@@ -11,6 +11,7 @@ add_executable(pulse-tests
   test_measured_flows.cpp
   test_aggregator.cpp
   test_windows_reader.cpp
+  test_etw_collector.cpp
   test_table_formatter.cpp
   test_options.cpp
   test_serializer.cpp
