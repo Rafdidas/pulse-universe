@@ -27,10 +27,12 @@ import { FlowStreams } from './FlowStreams';
 import { useFocusStore } from './focusStore';
 import { FRAME_PRIORITY } from './framePriority';
 import { nodeIdsOf, parseNodeId } from './nodeList';
+import { OrbitRings } from './OrbitRings';
 import { Particles } from './Particles';
 import { PostEffects } from './PostEffects';
 import { ProcessNode } from './ProcessNode';
 import { Satellites } from './Satellites';
+import { SystemStar } from './SystemStar';
 import {
   FocusFrame,
   HoverFrame,
@@ -205,6 +207,8 @@ export function SceneRoot() {
   return (
     <SceneContext.Provider value={context}>
       <CameraRig />
+      <SystemStar />
+      <OrbitRings />
       {nodeIds.map((id) => {
         const { key, account } = parseNodeId(id);
         return <ProcessNode key={key} nodeKey={key} account={account} />;

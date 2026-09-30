@@ -8,8 +8,9 @@ export interface Pose {
   target: Vec3;
 }
 
+// 태양계형 배치 스펙 D64: 궤도가 한 평면에 있으므로 위에서 비스듬히 내려다본다.
 export const OVERVIEW_POSE: Pose = {
-  position: { x: 0, y: 10, z: 58 },
+  position: { x: 0, y: 50, z: 66 },
   target: { x: 0, y: 0, z: 0 },
 };
 

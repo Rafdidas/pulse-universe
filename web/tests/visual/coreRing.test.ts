@@ -33,12 +33,12 @@ describe('coreRing', () => {
 
   it('places cores evenly on a flat ring, the first one on +x', () => {
     const first = corePosition(0, 28);
-    expect(first.x).toBeCloseTo(28, 6);
+    expect(first.x).toBeCloseTo(RING_MIN_RADIUS, 6);
     expect(first.z).toBeCloseTo(0, 6);
     for (let i = 0; i < 28; i += 1) {
       const p = corePosition(i, 28);
       expect(p.y).toBe(0);
-      expect(distance(p)).toBeCloseTo(28, 6);
+      expect(distance(p)).toBeCloseTo(RING_MIN_RADIUS, 6);
     }
     const gap = distance(corePosition(0, 28), corePosition(1, 28));
     expect(distance(corePosition(13, 28), corePosition(14, 28))).toBeCloseTo(gap, 6);
