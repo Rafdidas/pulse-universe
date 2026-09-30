@@ -1,0 +1,63 @@
+name: Release
+
+# Pushing a tag such as v0.1.0 builds the Windows zip and publishes it as a GitHub Release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\.vcpkg-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag name
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_NAME -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Tag '$env:GITHUB_REF_NAME' is not of the form vMAJOR.MINOR.PATCH"
+          }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('engine/vcpkg.json') }}
+
+      - name: Make the cache directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+
+      - name: Test the frontend
+        shell: pwsh
+        working-directory: web
+        run: |
+          npm ci
+          npm test
+          npm run typecheck
+          npm run lint
+
+      - name: Build the zip
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          ./scripts/package.ps1 -Version $version -SkipNpmCi
+
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $files = Get-ChildItem dist-release -Filter 'pulse-universe-*' | ForEach-Object { $_.FullName }
+          gh release create $env:GITHUB_REF_NAME $files --title $env:GITHUB_REF_NAME --generate-notes
