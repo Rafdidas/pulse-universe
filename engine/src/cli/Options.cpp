@@ -35,6 +35,17 @@ bool parseUnsigned(const char* text, unsigned& out) {
 
 }  // namespace
 
+bool applyDefaultLaunch(Options& out, const std::string& web_root, bool web_root_exists) {
+    if (!web_root_exists || web_root.empty()) {
+        return false;
+    }
+    Options launch;
+    launch.mode = Mode::Serve;
+    launch.web_root = web_root;
+    out = launch;
+    return true;
+}
+
 std::string usageText() {
     return
         "pulse-engine 0.2.0\n"
@@ -45,6 +56,9 @@ std::string usageText() {
         "  pulse-engine --serve [--port N] [--web-root DIR] [--iterations N]\n"
         "                       [--interval-ms N] [--max-groups N] [--allow-origin URL]\n"
         "  Every mode also takes [--mapping auto|estimated|measured].\n"
+        "\n"
+        "  With no arguments, pulse-engine serves the web/ folder next to the exe and opens\n"
+        "  the browser (when that folder exists).\n"
         "\n"
         "  --dump            Print a process group table every interval.\n"
         "  --json            Print one snapshot as contract-shaped JSON and exit.\n"

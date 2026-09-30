@@ -15,7 +15,11 @@
 └─────────────────────┘                   └────────────────────────────┘
 ```
 
-## 가장 빠른 실행
+## 다운로드해서 실행 (빌드 도구 필요 없음)
+
+[Releases](https://github.com/Rafdidas/pulse-universe/releases) 에서 `pulse-universe-vX.Y.Z-win-x64.zip` 을 받아 풀고 `Start Pulse Universe.bat` (또는 `pulse-engine.exe`)을 더블클릭하면 브라우저에 화면이 뜬다. 관리자 권한이 필요한 실측 흐름은 `Start Pulse Universe (Admin).bat` (UAC 창에서 '아니오'를 누르면 아무것도 뜨지 않는다). 서명되지 않은 프로그램이라 처음에는 Windows 가 경고할 수 있다 — zip 안의 `README.txt` 에 대처법이 있다. 아래는 소스에서 직접 빌드하는 방법이다.
+
+## 가장 빠른 실행 (소스에서)
 
 빌드 도구(아래 요구 사항)만 갖춰져 있으면 저장소 루트에서 한 줄이다.
 
@@ -123,6 +127,10 @@ pulse-engine --serve [--port N] [--web-root DIR] [--iterations N]
 | `H` | 범례(오른쪽 아래) 접기·펴기. 초점 중에는 숨는다 |
 
 GPU 가 느리면 해상도(dpr)를 자동으로 낮춘다.
+
+## 릴리스 만들기
+
+`scripts/package.ps1 -Version 0.1.0` 이 프런트엔드를 빌드하고, 엔진을 정적 링크(외부 DLL·Visual C++ 재배포 패키지 필요 없음)로 빌드해, `dist-release/` 에 zip 과 `.sha256` 을 만든다. `v0.1.0` 같은 태그를 푸시하면 GitHub Actions 가 같은 스크립트로 릴리스를 올린다. 푸시와 PR 마다 `CI` 워크플로가 웹·엔진 테스트를 돌린다.
 
 ## 테스트
 
