@@ -270,3 +270,30 @@ TEST_CASE("mapping rejects unknown or missing values", "[options]") {
     REQUIRE(parse({"--serve", "--mapping"}, options, error) == ParseResult::Error);
     REQUIRE(error == "invalid --mapping");
 }
+
+TEST_CASE("the default launch serves the web folder with the usual defaults", "[options]") {
+    Options options;
+
+    REQUIRE(applyDefaultLaunch(options, "C:\\app\\web", true));
+
+    REQUIRE(options.mode == Mode::Serve);
+    REQUIRE(options.web_root == "C:\\app\\web");
+    REQUIRE(options.port == 9000);
+    REQUIRE(options.interval_ms == 1000);
+    REQUIRE(options.mapping == Mapping::Auto);
+}
+
+TEST_CASE("the default launch leaves the options alone without a web folder", "[options]") {
+    Options options;
+    options.port = 1234;
+
+    REQUIRE_FALSE(applyDefaultLaunch(options, "C:\\app\\web", false));
+    REQUIRE_FALSE(applyDefaultLaunch(options, "", true));
+
+    REQUIRE(options.mode == Mode::None);
+    REQUIRE(options.port == 1234);
+}
+
+TEST_CASE("usage mentions the no-argument launch", "[options]") {
+    REQUIRE(usageText().find("With no arguments") != std::string::npos);
+}

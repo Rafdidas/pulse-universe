@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <shellapi.h>
 
 #include <cstdio>
 #include <filesystem>
@@ -14,6 +15,32 @@
 #include "platform/windows/WindowsSystemReader.h"
 
 namespace {
+
+// exe 가 있는 디렉터리 옆의 web 폴더 (릴리스 zip 의 구조).
+std::filesystem::path webFolderNextToExe() {
+    wchar_t buffer[MAX_PATH] = {};
+    const DWORD length = ::GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) {
+        return {};
+    }
+    return std::filesystem::path(buffer).parent_path() / "web";
+}
+
+// 서버가 뜬 뒤 기본 브라우저로 화면을 연다 (인자 없이 실행했을 때만).
+void openBrowser(unsigned short port) {
+    const std::wstring url = L"http://127.0.0.1:" + std::to_wstring(port) + L"/";
+    ::ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+// 콘솔이 곧바로 닫히는 더블클릭 실행에서는 실패 이유를 볼 수 없다. 대화상자로 한 번 알린다.
+void showFailure(const std::string& message) {
+    const int wide = ::MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, nullptr, 0);
+    std::wstring text(static_cast<size_t>(wide > 0 ? wide : 1), L'\0');
+    if (wide > 0) {
+        ::MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, text.data(), wide);
+    }
+    ::MessageBoxW(nullptr, text.c_str(), L"Pulse Universe", MB_OK | MB_ICONERROR);
+}
 
 // Ctrl+C·창 닫기·로그오프로 죽으면 소멸자가 돌지 못해 커널 세션이 남는다. 계속 이벤트를
 // 쌓는 세션을 두지 않도록 여기서 이름으로 멈춘다. FALSE 를 돌려 기본 종료 동작은 그대로 둔다.
@@ -63,7 +90,7 @@ int runJson(pulse::ISystemReader& reader, const pulse::Options& options) {
     return 0;
 }
 
-int runServe(pulse::ISystemReader& reader, const pulse::Options& options) {
+int runServe(pulse::ISystemReader& reader, const pulse::Options& options, bool open_browser) {
     pulse::ServeConfig cfg;
     cfg.interval_ms = options.interval_ms;
     cfg.iterations = options.iterations;
@@ -86,7 +113,7 @@ int runServe(pulse::ISystemReader& reader, const pulse::Options& options) {
 
     const bool has_web_root = !cfg.server.web_root.empty();
     const pulse::ServeResult result =
-        pulse::runServe(reader, cfg, [has_web_root](unsigned short port) {
+        pulse::runServe(reader, cfg, [has_web_root, open_browser](unsigned short port) {
             std::printf("pulse-engine listening on ws://127.0.0.1:%u\n",
                         static_cast<unsigned>(port));
             if (has_web_root) {
@@ -108,7 +135,18 @@ int main(int argc, char** argv) {
     pulse::Options options;
     std::string error;
 
-    switch (pulse::parseOptions(argc, argv, options, error)) {
+    // 릴리스 zip 설계 D70. 인자 없이 실행(더블클릭)하면 exe 옆의 web/ 을 서빙하고 브라우저를
+    // 연다. 그 폴더가 없으면 지금처럼 사용법을 출력한다.
+    bool launched_by_default = false;
+    if (argc == 1) {
+        const std::filesystem::path web = webFolderNextToExe();
+        std::error_code ec;
+        const bool exists = !web.empty() && std::filesystem::is_directory(web, ec) && !ec;
+        launched_by_default = pulse::applyDefaultLaunch(options, web.string(), exists);
+    }
+
+    switch (launched_by_default ? pulse::ParseResult::Ok
+                                : pulse::parseOptions(argc, argv, options, error)) {
         case pulse::ParseResult::Ok:
             break;
         case pulse::ParseResult::ShowUsage:
@@ -143,7 +181,7 @@ int main(int argc, char** argv) {
         case pulse::Mode::Json:
             return runJson(reader, options);
         case pulse::Mode::Serve:
-            return runServe(reader, options);
+            return runServe(reader, options, launched_by_default);
         case pulse::Mode::None:
             break;
     }
