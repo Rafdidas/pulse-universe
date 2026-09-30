@@ -2,6 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
 import { App } from '../dashboard/App';
 import { Universe } from '../scene/Universe';
+import { Legend } from './Legend';
 import { SceneErrorBoundary } from './SceneErrorBoundary';
 import { isShortcut } from './shortcut';
 import { UniverseBadge } from './UniverseBadge';
@@ -51,6 +52,7 @@ export function Shell() {
             <Universe />
           </SceneErrorBoundary>
           <UniverseBadge />
+          <Legend />
         </>
       )}
       <button type="button" className="shell-toggle" onClick={toggle}>
