@@ -1,7 +1,7 @@
 # 릴리스 zip 설계
 
 - 작성일: 2026-09-30
-- 상태: 승인 대기
+- 상태: 승인됨 (시제품 확인)
 - 선행: README·`run.bat`, ETW 확장(`--mapping`), M1~M9 구현 (`main`)
 - 범위: 저장소를 받지 않아도, 빌드 도구가 없어도 실행할 수 있는 Windows 릴리스 zip 을 만들고, GitHub Actions 로 검사와 릴리스를 자동화한다. 설치 프로그램·데스크톱 앱·코드 서명은 범위 밖이다.
 
@@ -37,11 +37,12 @@
 
 ```
 pulse-universe-v0.1.0-win-x64.zip
-  Start Pulse Universe.bat
-  Start Pulse Universe (Admin).bat
-  pulse-engine.exe
-  web\...
-  README.txt
+  pulse-universe-v0.1.0-win-x64/            zip 안의 최상위 폴더 하나 (풀 때 파일이 흩어지지 않게)
+    Start Pulse Universe.bat
+    Start Pulse Universe (Admin).bat
+    pulse-engine.exe
+    web/...
+    README.txt
 ```
 
 - 파일 이름의 버전은 태그(`v0.1.0`)에서 온다. 로컬에서는 인자로 준다 (`-Version 0.1.0`, 기본 `dev`).
@@ -61,14 +62,23 @@ pulse-universe-v0.1.0-win-x64.zip
 
 `scripts/package.ps1 [-Version <문자열>] [-OutDir <경로>]` (기본 `dist-release/`).
 
-1. `web/`: `npm ci`(있으면 생략 가능 옵션 없음), `npm run build`.
+1. `web/`: `npm ci` (`-SkipNpmCi` 로 생략할 수 있다), `npm run build`.
 2. 엔진: `cmake -S engine -B engine/build-release -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`, `cmake --build engine/build-release --config Release --target pulse-engine`.
 3. 정적 링크 확인: `dumpbin /dependents` 결과에 `boost`·`VCRUNTIME`·`MSVCP` 가 있으면 실패한다.
-4. 스테이징 디렉터리에 `pulse-engine.exe`, `web/`, 두 `.bat`, `README.txt` 를 모으고 `Compress-Archive` 로 zip.
+4. 스테이징 디렉터리에 `pulse-engine.exe`, `web/`, 두 `.bat`, `README.txt` 를 모으고 zip. 항목 이름은 슬래시로 직접 쓴다 (Windows PowerShell 5.1 의 `CreateFromDirectory` 는 역슬래시를 써서 다른 압축 해제 도구가 잘못 읽는다).
 5. SHA256 파일을 쓴다.
 6. 결과 경로와 크기를 출력한다.
 
 `.bat`·`README.txt` 의 원본은 `scripts/release/` 아래에 두고 스크립트가 복사한다.
+
+### 6.1 시제품 결과
+
+- `scripts/package.ps1 -Version 0.1.0 -SkipNpmCi` 가 끝까지 돈다 (엔진 정적 구성·빌드 포함). 정적 링크 검사 통과. 결과: `pulse-universe-v0.1.0-win-x64.zip` 0.9 MB (풀면 exe 1,284,096 바이트 + web 1.5 MB), `.sha256` 한 줄.
+- 다른 폴더에 풀어 인자 없이 `pulse-engine.exe` 를 실행하면 `/` 가 200 으로 화면을 내고, WebSocket 이 `hello` 를 보낸다. 포트가 이미 쓰이면 실패 이유를 출력하고 끝난다 (그 경우 `MessageBoxW` 는 대화형 세션이 아니라 시험에서 확인하지 못했다).
+- 엔진 테스트 198 통과 + ETW 3 SKIP (기존 195 + 새 3), 경고 0.
+- 워크플로 두 개는 YAML 로 읽힌다.
+- 확인하지 못한 것: `Start Pulse Universe (Admin).bat` 은 UAC 승인이 필요해 이 시험에서는 사용자가 승인하지 않아 끝까지 보지 못했다. 브라우저가 실제로 열리는지(`ShellExecuteW`)와 GitHub Actions 의 실제 실행도 확인하지 못했다.
+- 만드는 중 실수 하나: 스크립트를 파이썬 문자열로 쓰다가 ``·``·`\d` 가 제어 문자로 바뀌어 경로가 깨졌다. 파일을 다시 읽어 발견하고 직접 다시 썼다. 계획의 코드 블록은 그렇게 추출하지 말고 원문 그대로 옮겨야 한다.
 
 ## 7. GitHub Actions (D72)
 
