@@ -20,6 +20,7 @@ import { LifecycleConsumer, type LifecycleEvent } from '../visual/lifecycleEvent
 import { colorFor, radiusFor } from '../visual/mapping';
 import { PresenceTracker } from '../visual/presence';
 import { AmbientDust } from './AmbientDust';
+import { BodyLabels } from './BodyLabels';
 import { CameraRig } from './CameraRig';
 import { CoreRing } from './CoreRing';
 import { CoreSparks } from './CoreSparks';
@@ -209,6 +210,7 @@ export function SceneRoot() {
       <CameraRig />
       <SystemStar />
       <OrbitRings />
+      <BodyLabels />
       {nodeIds.map((id) => {
         const { key, account } = parseNodeId(id);
         return <ProcessNode key={key} nodeKey={key} account={account} />;

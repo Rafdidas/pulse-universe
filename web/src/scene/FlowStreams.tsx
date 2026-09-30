@@ -29,9 +29,9 @@ const to: Vec3 = { x: 0, y: 0, z: 0 };
 const a: Vec3 = { x: 0, y: 0, z: 0 };
 const b: Vec3 = { x: 0, y: 0, z: 0 };
 
-// 호버한 그룹·코어와 이어진 선만 밝다. 호버가 없거나 위성이면 전부 밝다.
+// 호버한 그룹·코어와 이어진 선만 밝다. 호버가 없거나 위성·별이면 전부 밝다.
 function highlightFor(hovered: Hovered, edge: FlowEdge, coreIndex: number): number {
-  if (hovered === null || hovered.kind === 'satellite') {
+  if (hovered === null || hovered.kind === 'satellite' || hovered.kind === 'system') {
     return 1;
   }
   if (hovered.kind === 'group') {

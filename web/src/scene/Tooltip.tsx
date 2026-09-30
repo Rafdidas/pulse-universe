@@ -6,8 +6,10 @@ import type { Group } from 'three';
 import { formatMb, formatPct } from '../dashboard/format';
 import { coreLoad, orbRadius } from '../visual/coreMapping';
 import { corePosition } from '../visual/coreRing';
+import { systemDetail } from '../visual/labels';
 import { floatingPosition, type Vec3 } from '../visual/layout';
 import { radiusFor } from '../visual/mapping';
+import { STAR_RADIUS } from '../visual/solar';
 import { FRAME_PRIORITY } from './framePriority';
 import { useSceneContext, type Hovered, type SceneContextValue } from './sceneContext';
 
@@ -21,6 +23,18 @@ interface Label {
 // 숫자는 대시보드와 같은 formatMb·formatPct 로 쓴다 — 두 화면이 일치해야 한다.
 function labelFor(target: NonNullable<Hovered>, context: SceneContextValue): Label | null {
   const { cache, layout, presence, satellites } = context;
+  if (target.kind === 'system') {
+    const system = cache.snapshot?.system;
+    if (system === undefined) {
+      return null;
+    }
+    return {
+      position: { x: 0, y: 0, z: 0 },
+      radius: STAR_RADIUS,
+      title: 'System',
+      detail: systemDetail(system),
+    };
+  }
   if (target.kind === 'core') {
     const cores = cache.snapshot?.cores;
     const core = cores?.[target.index];

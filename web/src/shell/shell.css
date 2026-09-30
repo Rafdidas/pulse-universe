@@ -193,3 +193,11 @@
 .legend dd {
   margin: 0;
 }
+
+/* 이름표·별 정보 스펙 4절. 큰 천체의 이름표. */
+.universe-label {
+  color: #b8c2cf;
+  font-size: 11px;
+  white-space: nowrap;
+  text-shadow: 0 0 4px #03040a, 0 0 2px #03040a;
+}
