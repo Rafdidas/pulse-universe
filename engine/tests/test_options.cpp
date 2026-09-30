@@ -239,3 +239,34 @@ TEST_CASE("a web root without a value is rejected", "[options]") {
 TEST_CASE("usage mentions the web root", "[options]") {
     REQUIRE(usageText().find("--web-root") != std::string::npos);
 }
+
+TEST_CASE("mapping defaults to auto", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--serve"}, options, error) == ParseResult::Ok);
+    REQUIRE(options.mapping == Mapping::Auto);
+    REQUIRE(usageText().find("--mapping") != std::string::npos);
+}
+
+TEST_CASE("mapping accepts auto, estimated and measured", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--dump", "--mapping", "estimated"}, options, error) == ParseResult::Ok);
+    REQUIRE(options.mapping == Mapping::Estimated);
+    REQUIRE(parse({"--serve", "--mapping", "measured"}, options, error) == ParseResult::Ok);
+    REQUIRE(options.mapping == Mapping::Measured);
+    REQUIRE(parse({"--json", "--mapping", "auto"}, options, error) == ParseResult::Ok);
+    REQUIRE(options.mapping == Mapping::Auto);
+}
+
+TEST_CASE("mapping rejects unknown or missing values", "[options]") {
+    Options options;
+    std::string error;
+
+    REQUIRE(parse({"--serve", "--mapping", "exact"}, options, error) == ParseResult::Error);
+    REQUIRE(error == "invalid --mapping");
+    REQUIRE(parse({"--serve", "--mapping"}, options, error) == ParseResult::Error);
+    REQUIRE(error == "invalid --mapping");
+}

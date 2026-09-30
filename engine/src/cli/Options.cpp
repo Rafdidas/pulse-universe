@@ -44,6 +44,7 @@ std::string usageText() {
         "  pulse-engine --json  [--interval-ms N] [--max-groups N]\n"
         "  pulse-engine --serve [--port N] [--web-root DIR] [--iterations N]\n"
         "                       [--interval-ms N] [--max-groups N] [--allow-origin URL]\n"
+        "  Every mode also takes [--mapping auto|estimated|measured].\n"
         "\n"
         "  --dump            Print a process group table every interval.\n"
         "  --json            Print one snapshot as contract-shaped JSON and exit.\n"
@@ -54,7 +55,10 @@ std::string usageText() {
         "  --interval-ms N   Sampling interval in milliseconds (default 1000, minimum 1).\n"
         "  --iterations N    Stop after N snapshots for --dump and --serve (default: run "
         "until Ctrl+C).\n"
-        "  --max-groups N    Number of groups to show (default 40).\n";
+        "  --max-groups N    Number of groups to show (default 40).\n"
+        "  --mapping M       Thread-to-core mapping. auto (default) measures with ETW when\n"
+        "                    run as administrator and estimates otherwise; estimated never\n"
+        "                    measures; measured exits if ETW cannot start.\n";
 }
 
 ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::string& error) {
@@ -128,6 +132,18 @@ ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::s
                 return ParseResult::Error;
             }
             parsed.max_groups = value;
+        } else if (std::strcmp(arg, "--mapping") == 0) {
+            const char* value = i + 1 < argc ? argv[++i] : "";
+            if (std::strcmp(value, "auto") == 0) {
+                parsed.mapping = Mapping::Auto;
+            } else if (std::strcmp(value, "estimated") == 0) {
+                parsed.mapping = Mapping::Estimated;
+            } else if (std::strcmp(value, "measured") == 0) {
+                parsed.mapping = Mapping::Measured;
+            } else {
+                error = "invalid --mapping";
+                return ParseResult::Error;
+            }
         } else {
             error = std::string("unknown argument: ") + arg;
             return ParseResult::Error;
