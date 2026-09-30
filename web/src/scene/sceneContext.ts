@@ -3,7 +3,7 @@ import { createContext, useContext } from 'react';
 import type { ChildProcess, ProcessGroup } from '../protocol/schema';
 import type { InterpolatedGroup } from '../state/interpolator';
 import type { FrameCache } from '../visual/frameCache';
-import type { LayoutSim, Vec3 } from '../visual/layout';
+import type { OrbitLayout, Vec3 } from '../visual/layout';
 import type { LifecycleEvent } from '../visual/lifecycleEvents';
 import type { PresenceEntry, PresenceTracker } from '../visual/presence';
 
@@ -68,7 +68,7 @@ export interface SatelliteView {
 // 바뀌지 않는다 — 안의 내용만 프레임마다 바뀌므로 context 구독자가 재렌더되지 않는다.
 export interface SceneContextValue {
   cache: FrameCache;
-  layout: LayoutSim;
+  layout: OrbitLayout;
   presence: PresenceTracker<InterpolatedGroup>;
   events: FrameEvents;
   focus: FocusFrame;

@@ -15,7 +15,7 @@ import {
 } from '../visual/bursts';
 import { createFrameCache, layoutNodesFrom, updateFrameCache } from '../visual/frameCache';
 import { hash01 } from '../visual/hash';
-import { LayoutSim } from '../visual/layout';
+import { OrbitLayout } from '../visual/layout';
 import { LifecycleConsumer, type LifecycleEvent } from '../visual/lifecycleEvents';
 import { colorFor, radiusFor } from '../visual/mapping';
 import { PresenceTracker } from '../visual/presence';
@@ -98,7 +98,7 @@ export function SceneRoot() {
   const context = useMemo<SceneContextValue>(
     () => ({
       cache: createFrameCache(),
-      layout: new LayoutSim(),
+      layout: new OrbitLayout(),
       presence: new PresenceTracker<InterpolatedGroup>(),
       events: new FrameEvents(),
       focus: new FocusFrame(),

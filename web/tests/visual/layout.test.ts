@@ -4,194 +4,193 @@ import { describe, expect, it } from 'vitest';
 
 import { SnapshotSchema } from '../../src/protocol/schema';
 import {
-  FIXED_STEP,
-  LayoutSim,
   MAX_DT,
   OUTSIDE_MARGIN,
-  SPAWN_RADIUS,
+  OrbitLayout,
+  SETTLE_TAU,
   floatOffset,
   floatingPosition,
   type LayoutNode,
   type Vec3,
 } from '../../src/visual/layout';
 import { radiusFor } from '../../src/visual/mapping';
+import { orbitSpeed, planOrbits } from '../../src/visual/solar';
 
 const fixturePath = fileURLToPath(new URL('../fixtures/snapshot.json', import.meta.url));
 const fixture = SnapshotSchema.parse(JSON.parse(readFileSync(fixturePath, 'utf8')));
 
-// 실제 픽스처의 40 개 그룹. 반지름 0.89 ~ 4.05.
+// 실제 픽스처의 40 개 그룹.
 const nodes: LayoutNode[] = fixture.groups.map((group) => ({
   key: group.key,
   radius: radiusFor(group.mem_mb),
 }));
 
-function length(v: Vec3): number {
-  return Math.hypot(v.x, v.y, v.z);
+const FRAME = 1 / 60;
+
+function planar(v: Vec3): number {
+  return Math.hypot(v.x, v.z);
 }
 
-function positionsOf(sim: LayoutSim, list: readonly LayoutNode[]): Vec3[] {
-  return list.map((node) => ({ ...sim.position(node.key)! }));
+function angleOf(v: Vec3): number {
+  return Math.atan2(v.z, v.x);
 }
 
-// 첫 호출의 사전 수렴 뒤에 10 초를 더 돌린다.
-function settled(list: readonly LayoutNode[]): LayoutSim {
-  const sim = new LayoutSim();
-  for (let i = 0; i < 600; i += 1) {
-    sim.step(list, FIXED_STEP);
+// from 에서 to 로 돈 각 (−π, π].
+function turned(from: number, to: number): number {
+  const d = to - from;
+  return Math.atan2(Math.sin(d), Math.cos(d));
+}
+
+function distance(a: Vec3, b: Vec3): number {
+  return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+function run(layout: OrbitLayout, list: readonly LayoutNode[], seconds: number): void {
+  for (let t = 0; t < seconds; t += FRAME) {
+    layout.step(list, FRAME);
   }
-  return sim;
 }
 
-// 어떤 두 구도 서로를 파고들지 않는다. COLLISION_GAP 은 여유분이다.
-function expectApart(sim: LayoutSim, list: readonly LayoutNode[]): void {
-  const positions = positionsOf(sim, list);
-  for (let i = 0; i < list.length; i += 1) {
-    for (let j = i + 1; j < list.length; j += 1) {
-      const d = length({
-        x: positions[i].x - positions[j].x,
-        y: positions[i].y - positions[j].y,
-        z: positions[i].z - positions[j].z,
-      });
-      expect(d).toBeGreaterThan(list[i].radius + list[j].radius);
+// 가장 작은 천체를 가장 크게 바꾼 목록. 그 천체는 가장 바깥 궤도에서 가장 안쪽 궤도로 옮겨 간다.
+function withSmallestGrown(): { key: string; grown: LayoutNode[] } {
+  const smallest = nodes.reduce((a, b) => (b.radius < a.radius ? b : a));
+  return {
+    key: smallest.key,
+    grown: nodes.map((node) => (node.key === smallest.key ? { ...node, radius: 5 } : node)),
+  };
+}
+
+describe('OrbitLayout', () => {
+  it('places the very first bodies straight onto their orbits', () => {
+    const layout = new OrbitLayout();
+    layout.step(nodes, FRAME);
+    const plan = planOrbits(nodes);
+    for (const ring of plan.rings) {
+      for (const key of ring.keys) {
+        const p = layout.position(key)!;
+        expect(planar(p)).toBeCloseTo(ring.radius, 6);
+        expect(p.y).toBe(0);
+      }
     }
-  }
-}
-
-describe('LayoutSim', () => {
-  it('keeps every pair of spheres apart once settled', () => {
-    expectApart(settled(nodes), nodes);
+    expect(layout.plan()).toEqual(plan);
   });
 
-  it('keeps the centroid near the origin', () => {
-    const positions = positionsOf(settled(nodes), nodes);
-    const centroid = positions.reduce(
-      (sum, p) => ({
-        x: sum.x + p.x / positions.length,
-        y: sum.y + p.y / positions.length,
-        z: sum.z + p.z / positions.length,
-      }),
-      { x: 0, y: 0, z: 0 },
-    );
-    expect(length(centroid)).toBeLessThan(2);
+  it('spreads the bodies of an orbit evenly around it', () => {
+    const layout = new OrbitLayout();
+    layout.step(nodes, FRAME);
+    const ring = planOrbits(nodes).rings[1];
+    const angles = ring.keys.map((key) => angleOf(layout.position(key)!));
+    const step = (2 * Math.PI) / ring.keys.length;
+    for (let i = 1; i < angles.length; i += 1) {
+      const gap = (((angles[i] - angles[i - 1]) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      expect(gap).toBeCloseTo(step, 6);
+    }
   });
 
-  it('pulls the ten largest bodies closer to the center than the ten smallest', () => {
-    const sim = settled(nodes);
-    const bySize = [...nodes].sort((a, b) => b.radius - a.radius);
-    const meanDistance = (list: LayoutNode[]) =>
-      list.reduce((sum, node) => sum + length(sim.position(node.key)!), 0) / list.length;
+  it('turns inner orbits faster than outer ones', () => {
+    const layout = new OrbitLayout();
+    layout.step(nodes, FRAME);
+    const plan = planOrbits(nodes);
+    const inner = plan.rings[0].keys[0];
+    const outer = plan.rings[plan.rings.length - 1].keys[0];
+    const innerFrom = angleOf(layout.position(inner)!);
+    const outerFrom = angleOf(layout.position(outer)!);
 
-    expect(meanDistance(bySize.slice(0, 10))).toBeLessThan(meanDistance(bySize.slice(-10)));
+    run(layout, nodes, 2);
+
+    const innerTurn = turned(innerFrom, angleOf(layout.position(inner)!));
+    const outerTurn = turned(outerFrom, angleOf(layout.position(outer)!));
+    expect(innerTurn).toBeGreaterThan(outerTurn);
+    // 평활이 목표 각을 약간 늦게 따라가므로 소수 한 자리까지만 본다.
+    expect(innerTurn).toBeCloseTo(orbitSpeed(plan.rings[0].radius) * 2, 1);
   });
 
-  it('is already settled after the very first step', () => {
-    // 첫 화면이 한 점에서 퍼져 나오지 않는다 — 첫 호출이 SETTLE_STEPS 만큼 미리 돈다.
-    const sim = new LayoutSim();
-    sim.step(nodes, FIXED_STEP);
-    expectApart(sim, nodes);
+  it('brings a body that arrives later in from outside every orbit', () => {
+    const layout = new OrbitLayout();
+    layout.step(nodes, FRAME);
+    const outer = layout.plan().outerRadius;
+
+    const newcomer: LayoutNode = { key: 'late.exe:9999', radius: 1 };
+    const grown = [...nodes, newcomer];
+    layout.step(grown, FRAME);
+    expect(planar(layout.position(newcomer.key)!)).toBeGreaterThanOrEqual(outer + OUTSIDE_MARGIN - 0.5);
+
+    run(layout, grown, SETTLE_TAU * 10);
+    const ring = layout.plan().rings.find((r) => r.keys.includes(newcomer.key))!;
+    expect(planar(layout.position(newcomer.key)!)).toBeCloseTo(ring.radius, 2);
   });
 
-  it('settles to the same shape on the first step regardless of the frame time', () => {
-    // 새로고침해도 같은 모양 — 첫 호출은 dt 와 무관하다.
-    const a = new LayoutSim();
-    const b = new LayoutSim();
-    a.step(nodes, 1 / 144);
-    b.step(nodes, 1 / 24);
+  it('glides a body to its new orbit instead of jumping', () => {
+    const layout = new OrbitLayout();
+    layout.step(nodes, FRAME);
+    const { key, grown } = withSmallestGrown();
 
-    expect(positionsOf(a, nodes)).toEqual(positionsOf(b, nodes));
+    let previous = { ...layout.position(key)! };
+    let largestJump = 0;
+    for (let t = 0; t < SETTLE_TAU * 10; t += FRAME) {
+      layout.step(grown, FRAME);
+      const now = layout.position(key)!;
+      largestJump = Math.max(largestJump, distance(now, previous));
+      previous = { ...now };
+    }
+    expect(largestJump).toBeLessThan(1);
+    expect(planar(layout.position(key)!)).toBeCloseTo(layout.plan().rings[0].radius, 2);
+  });
+
+  it('never cuts across the star while changing orbits', () => {
+    const layout = new OrbitLayout();
+    layout.step(nodes, FRAME);
+    const { key, grown } = withSmallestGrown();
+    const innermost = Math.min(layout.plan().rings[0].radius, planOrbits(grown).rings[0].radius);
+    for (let t = 0; t < SETTLE_TAU * 10; t += FRAME) {
+      layout.step(grown, FRAME);
+      expect(planar(layout.position(key)!)).toBeGreaterThanOrEqual(innermost - 1e-6);
+    }
+  });
+
+  it('forgets keys that disappear', () => {
+    const layout = new OrbitLayout();
+    layout.step(nodes, FRAME);
+    const rest = nodes.slice(1);
+    layout.step(rest, FRAME);
+    expect(layout.size).toBe(rest.length);
+    expect(layout.position(nodes[0].key)).toBeUndefined();
   });
 
   it('advances at most MAX_DT per call', () => {
-    // 백그라운드 탭에서 돌아온 5 초짜리 프레임을 한 번에 따라잡지 않는다.
-    const a = settled(nodes);
-    const b = settled(nodes);
-    a.step(nodes, 5);
+    const a = new OrbitLayout();
+    const b = new OrbitLayout();
+    a.step(nodes, FRAME);
+    b.step(nodes, FRAME);
+    a.step(nodes, 10);
     b.step(nodes, MAX_DT);
-
-    expect(positionsOf(a, nodes)).toEqual(positionsOf(b, nodes));
+    expect(a.position(nodes[0].key)).toEqual(b.position(nodes[0].key));
   });
 
   it('treats a NaN or negative frame time as no time at all', () => {
-    const reference = settled(nodes);
-    const sim = settled(nodes);
-    sim.step(nodes, Number.NaN);
-    sim.step(nodes, -1);
-    expect(positionsOf(sim, nodes)).toEqual(positionsOf(reference, nodes));
-
-    // 잘못된 dt 가 누적기를 오염시키면 이후 정상 프레임에서도 멈춰 버린다.
-    for (let i = 0; i < 10; i += 1) {
-      reference.step(nodes, FIXED_STEP);
-      sim.step(nodes, FIXED_STEP);
-    }
-    expect(positionsOf(sim, nodes)).toEqual(positionsOf(reference, nodes));
+    const layout = new OrbitLayout();
+    layout.step(nodes, FRAME);
+    const before = { ...layout.position(nodes[0].key)! };
+    layout.step(nodes, Number.NaN);
+    layout.step(nodes, -1);
+    expect(layout.position(nodes[0].key)).toEqual(before);
   });
 
   it('produces identical positions for identical inputs', () => {
-    expect(positionsOf(settled(nodes), nodes)).toEqual(positionsOf(settled(nodes), nodes));
-  });
-
-  it('adds bodies for new keys and forgets keys that disappear', () => {
-    const sim = new LayoutSim();
-    sim.step(nodes, FIXED_STEP);
-    expect(sim.size).toBe(40);
-
-    const fewer = nodes.slice(0, 30);
-    sim.step(fewer, FIXED_STEP);
-    expect(sim.size).toBe(30);
-    expect(sim.position(nodes[35].key)).toBeUndefined();
-
-    const newcomer: LayoutNode = { key: 'newcomer.exe:9999', radius: 1 };
-    sim.step([...fewer, newcomer], FIXED_STEP);
-    expect(sim.size).toBe(31);
-    expect(sim.position(newcomer.key)).toBeDefined();
-  });
-
-  it('stays finite and bounded under a long run of huge frame times', () => {
-    const sim = new LayoutSim();
-    sim.step(nodes, FIXED_STEP);
-    for (let i = 0; i < 200; i += 1) {
-      sim.step(nodes, 5);
+    const a = new OrbitLayout();
+    const b = new OrbitLayout();
+    run(a, nodes, 1);
+    run(b, nodes, 1);
+    for (const node of nodes) {
+      expect(a.position(node.key)).toEqual(b.position(node.key));
     }
-
-    for (const p of positionsOf(sim, nodes)) {
-      expect(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z)).toBe(true);
-      expect(length(p)).toBeLessThan(40);
-    }
-  });
-
-  it('keeps drawing a lone body toward the center', () => {
-    const lone: LayoutNode[] = [{ key: 'solo.exe:1', radius: 1 }];
-    const sim = new LayoutSim();
-    sim.step(lone, FIXED_STEP);
-    const before = length(sim.position('solo.exe:1')!);
-    for (let i = 0; i < 600; i += 1) {
-      sim.step(lone, FIXED_STEP);
-    }
-    expect(length(sim.position('solo.exe:1')!)).toBeLessThan(before);
-  });
-
-  it('places a key that arrives after settling outside the whole cluster', () => {
-    // 무리 안쪽에서 생기면 형성 연출이 다른 천체에 가려진다 (M5 스펙 8절).
-    const sim = settled(nodes);
-    const farthest = Math.max(...positionsOf(sim, nodes).map(length));
-
-    const newcomer: LayoutNode = { key: 'newcomer.exe:4242', radius: 1 };
-    sim.step([...nodes, newcomer], 0);
-
-    expect(length(sim.position(newcomer.key)!)).toBeCloseTo(farthest + OUTSIDE_MARGIN, 6);
-  });
-
-  it('still spreads the very first keys inside the spawn sphere', () => {
-    const sim = new LayoutSim();
-    sim.step(nodes, FIXED_STEP);
-    // 사전 수렴이 끝난 모양은 반지름 18 구 근처에 머문다.
-    expect(Math.max(...positionsOf(sim, nodes).map(length))).toBeLessThan(SPAWN_RADIUS + 5);
   });
 
   it('does nothing with an empty node list', () => {
-    const sim = new LayoutSim();
-    sim.step([], FIXED_STEP);
-    expect(sim.size).toBe(0);
+    const layout = new OrbitLayout();
+    layout.step([], FRAME);
+    expect(layout.size).toBe(0);
+    expect(layout.plan().rings).toEqual([]);
   });
 });
 
@@ -211,14 +210,14 @@ describe('floatOffset', () => {
 });
 
 describe('floatingPosition', () => {
-  it('adds the float offset to the simulated position', () => {
-    const sim = new LayoutSim();
-    sim.step(nodes, FIXED_STEP);
+  it('adds the float offset to the orbit position', () => {
+    const layout = new OrbitLayout();
+    layout.step(nodes, FRAME);
     const key = nodes[0].key;
-    const base = sim.position(key)!;
+    const base = layout.position(key)!;
     const offset = floatOffset(key, 4);
 
-    expect(floatingPosition(sim, key, 4)).toEqual({
+    expect(floatingPosition(layout, key, 4)).toEqual({
       x: base.x + offset.x,
       y: base.y + offset.y,
       z: base.z + offset.z,
@@ -226,6 +225,6 @@ describe('floatingPosition', () => {
   });
 
   it('returns undefined for an unknown key', () => {
-    expect(floatingPosition(new LayoutSim(), 'nope', 0)).toBeUndefined();
+    expect(floatingPosition(new OrbitLayout(), 'nope', 0)).toBeUndefined();
   });
 });
