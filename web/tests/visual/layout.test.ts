@@ -148,6 +148,30 @@ describe('OrbitLayout', () => {
     }
   });
 
+  it('does not let two bodies pass through each other when their memory ranks swap', () => {
+    const layout = new OrbitLayout();
+    layout.step(nodes, FRAME);
+    // 가장 큰 두 천체(같은 궤도)의 반지름을 서로 바꾼다 — 순위만 뒤집힌다.
+    const ranked = [...nodes].sort((a, b) => b.radius - a.radius);
+    const [first, second] = ranked;
+    const swapped = nodes.map((node) =>
+      node.key === first.key
+        ? { ...node, radius: second.radius }
+        : node.key === second.key
+          ? { ...node, radius: first.radius }
+          : node,
+    );
+    const before = { a: { ...layout.position(first.key)! }, b: { ...layout.position(second.key)! } };
+    let closest = Infinity;
+    for (let t = 0; t < SETTLE_TAU * 10; t += FRAME) {
+      layout.step(swapped, FRAME);
+      closest = Math.min(closest, distance(layout.position(first.key)!, layout.position(second.key)!));
+    }
+    // 두 천체는 자리를 맞바꾸지 않고, 서로 겹치는 데까지 다가가지도 않는다.
+    expect(closest).toBeGreaterThan(first.radius + second.radius - 0.5);
+    expect(distance(layout.position(first.key)!, before.a)).toBeLessThan(first.radius + second.radius + 30);
+  });
+
   it('forgets keys that disappear', () => {
     const layout = new OrbitLayout();
     layout.step(nodes, FRAME);

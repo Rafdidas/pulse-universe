@@ -13,7 +13,7 @@ export interface LayoutNode {
   radius: number;
 }
 
-// 태양계형 배치 스펙 5절. 그룹은 메모리 순위로 정한 동심원 궤도(visual/orbits.ts)를
+// 태양계형 배치 스펙 5절. 그룹은 메모리 순위로 정한 동심원 궤도(visual/solar.ts 의 planOrbits)를
 // 따라 공전한다. 궤도나 자리가 바뀌면 극좌표(반지름, 각)에서 부드럽게 옮겨 간다 —
 // 순간이동하지 않고, 가운데를 가로지르지도 않는다.
 
@@ -121,7 +121,7 @@ const FLOAT_AMPLITUDE = 0.2;
 const SALT_FLOAT_PERIOD = 21;
 const SALT_FLOAT_PHASE = 24;
 
-// 부유. 시뮬레이션 상태에는 들어가지 않고 그릴 때만 더한다 — 계약서 7.1 절.
+// 부유. 배치 상태에는 들어가지 않고 그릴 때만 더한다 — 계약서 7.1 절.
 // 축마다 주기(6~10 초)와 위상이 key 해시로 다르다.
 export function floatOffset(key: string, timeSec: number): Vec3 {
   const axis = (i: number) => {

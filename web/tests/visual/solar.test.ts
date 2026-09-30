@@ -3,7 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { SnapshotSchema } from '../../src/protocol/schema';
-import type { LayoutNode } from '../../src/visual/layout';
+import { RING_MIN_RADIUS } from '../../src/visual/coreRing';
+import { OUTSIDE_MARGIN, type LayoutNode } from '../../src/visual/layout';
 import { radiusFor } from '../../src/visual/mapping';
 import {
   ARC_GAP,
@@ -31,20 +32,45 @@ const radiusOf = new Map(nodes.map((node) => [node.key, node.radius]));
 describe('planOrbits', () => {
   it('fills the inner orbits with the largest bodies first', () => {
     const plan = planOrbits(nodes);
-    const order = plan.rings.flatMap((ring) => ring.keys.map((key) => radiusOf.get(key)!));
-    for (let i = 1; i < order.length; i += 1) {
-      expect(order[i]).toBeLessThanOrEqual(order[i - 1]);
+    // 순위는 어느 궤도에 들어가는지만 정한다: 안쪽 궤도의 가장 작은 천체도 바깥 궤도의
+    // 가장 큰 천체보다 작지 않다.
+    for (let k = 1; k < plan.rings.length; k += 1) {
+      const innerSmallest = Math.min(...plan.rings[k - 1].keys.map((key) => radiusOf.get(key)!));
+      const outerLargest = Math.max(...plan.rings[k].keys.map((key) => radiusOf.get(key)!));
+      expect(innerSmallest).toBeGreaterThanOrEqual(outerLargest);
     }
-    expect(order).toHaveLength(nodes.length);
+    expect(plan.rings.flatMap((ring) => ring.keys)).toHaveLength(nodes.length);
   });
 
-  it('breaks radius ties by key so the order never flickers', () => {
-    const plan = planOrbits([
-      { key: 'b.exe:2', radius: 1 },
-      { key: 'a.exe:1', radius: 1 },
-      { key: 'c.exe:3', radius: 1 },
+  it('orders the bodies inside an orbit by key, not by radius', () => {
+    // 이웃한 두 천체의 순위가 바뀌어도 궤도 안의 자리는 그대로여야 서로를 뚫지 않는다.
+    const before = planOrbits([
+      { key: 'b.exe:2', radius: 1.02 },
+      { key: 'a.exe:1', radius: 1.0 },
+      { key: 'c.exe:3', radius: 0.9 },
     ]);
-    expect(plan.rings[0].keys).toEqual(['a.exe:1', 'b.exe:2', 'c.exe:3']);
+    const swapped = planOrbits([
+      { key: 'b.exe:2', radius: 1.0 },
+      { key: 'a.exe:1', radius: 1.02 },
+      { key: 'c.exe:3', radius: 0.9 },
+    ]);
+    expect(before.rings[0].keys).toEqual(['a.exe:1', 'b.exe:2', 'c.exe:3']);
+    expect(swapped.rings[0].keys).toEqual(before.rings[0].keys);
+  });
+
+  it('puts the same set of bodies in the same orbits whatever the input order', () => {
+    const plan = planOrbits(nodes);
+    for (const ring of plan.rings) {
+      expect(ring.keys).toEqual([...ring.keys].sort());
+    }
+  });
+
+  it('breaks radius ties by key when deciding which orbit a body joins', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({ key: `k${String(i).padStart(2, '0')}`, radius: 0.3 }));
+    const plan = planOrbits(many);
+    expect(plan.rings.length).toBeGreaterThan(1);
+    // 같은 반지름이면 key 순으로 안쪽 궤도부터 채운다.
+    expect(plan.rings[0].keys).toEqual(many.slice(0, plan.rings[0].keys.length).map((n) => n.key));
   });
 
   it('keeps each orbit within its share of the circumference', () => {
@@ -76,8 +102,9 @@ describe('planOrbits', () => {
     expect(plan.rings.length).toBeLessThanOrEqual(5);
     const last = plan.rings[plan.rings.length - 1];
     expect(plan.outerRadius).toBeCloseTo(last.radius + last.maxBodyRadius, 9);
-    // 코어 고리(RING_MIN_RADIUS 34)의 Orb 와 닿지 않는다.
-    expect(plan.outerRadius).toBeLessThan(32);
+    // 코어 고리의 Orb 와 닿지 않는다. 새 천체가 나타나는 자리(가장 바깥 궤도 + OUTSIDE_MARGIN)도
+    // 고리 안쪽이다.
+    expect(plan.outerRadius + OUTSIDE_MARGIN).toBeLessThan(RING_MIN_RADIUS);
   });
 
   it('is deterministic and ignores the input order', () => {

@@ -138,6 +138,8 @@ system  색조 270° ± 12°    (보라)
 
 ## 6. 배치
 
+> **대체됨 (2026-09-30).** 이 절의 힘 시뮬레이션은 태양계형 배치(메모리 순위 궤도)로 바뀌었다. 지금의 설계는 `2026-09-30-solar-layout-design.md` 다. `LayoutSim` 은 `OrbitLayout` 이 되었고 `step`·`position`·`floatingPosition` API 는 같다.
+
 `web/src/visual/layout.ts`. 상태를 가진 순수 TypeScript 클래스이며 three를 모른다 (위치는 `{x, y, z}` 객체).
 
 ```

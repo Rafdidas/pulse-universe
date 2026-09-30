@@ -4,7 +4,7 @@
 
 **Goal:** 프로세스 그룹 천체의 배치를 힘 시뮬레이션에서 메모리 순위로 나눈 동심원 궤도로 바꾸고, 가운데에 시스템 별과 궤도선을 그린다.
 
-**Architecture:** 궤도 계획(`planOrbits`)·공전 속도·별 밝기는 `web/src/visual/solar.ts` 의 순수 함수다. `web/src/visual/layout.ts` 의 `LayoutSim`(힘 시뮬레이션)을 같은 API(`step`, `position`, `size`)를 가진 `OrbitLayout` 으로 바꾼다 — 천체는 궤도를 따라 공전하고, 궤도·자리가 바뀌면 극좌표에서 속도 상한을 두고 부드럽게 옮겨 간다. 장면에는 `SystemStar` 와 `OrbitRings` 를 더하고, 코어 고리를 넓히고, 카메라를 위에서 내려다보게 한다. 노드·툴팁·카메라 추적·위성·흐름·입자는 `layout.position(key)` 만 읽으므로 바뀌지 않는다.
+**Architecture:** 궤도 계획(`planOrbits` — 순위는 궤도 선택에만 쓰고 궤도 안의 자리는 key 순으로 고정한다)·공전 속도·별 밝기는 `web/src/visual/solar.ts` 의 순수 함수다. `web/src/visual/layout.ts` 의 `LayoutSim`(힘 시뮬레이션)을 같은 API(`step`, `position`, `size`)를 가진 `OrbitLayout` 으로 바꾼다 — 천체는 궤도를 따라 공전하고, 궤도·자리가 바뀌면 극좌표에서 속도 상한을 두고 부드럽게 옮겨 간다. 장면에는 `SystemStar` 와 `OrbitRings` 를 더하고, 코어 고리를 넓히고, 카메라를 위에서 내려다보게 한다. 노드·툴팁·카메라 추적·위성·흐름·입자는 `layout.position(key)` 만 읽으므로 바뀌지 않는다.
 
 **Tech Stack:** three 0.186 / @react-three/fiber 9.8 / Vitest 5
 
@@ -37,6 +37,7 @@ web/src/visual/solar.ts          STAR_RADIUS, STAR_GAP, ARC_GAP, FILL, RING_GAP,
                                  REF_RADIUS, SPIN_PERIOD_AT_REF, orbitSpeed, STAR_GAIN_IDLE, STAR_GAIN_BUSY, starGain
 web/src/visual/layout.ts         (전체 교체) LayoutSim → OrbitLayout (step, position, size, plan). floatOffset·floatingPosition 은 그대로
 web/src/scene/sceneContext.ts    (전체 교체) layout: OrbitLayout
+web/src/visual/frameCache.ts     (전체 교체) 주석만: 배치의 입력이 궤도 배치(OrbitLayout)
 web/src/scene/SceneRoot.tsx      (전체 교체) new OrbitLayout(), SystemStar·OrbitRings 마운트 (Task 2 와 Task 3 에서 두 번)
 web/src/visual/coreRing.ts       (전체 교체) RING_MIN_RADIUS 28 → 34
 web/src/visual/camera.ts         (전체 교체) OVERVIEW_POSE.position (0, 50, 66)
@@ -72,7 +73,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { SnapshotSchema } from '../../src/protocol/schema';
-import type { LayoutNode } from '../../src/visual/layout';
+import { RING_MIN_RADIUS } from '../../src/visual/coreRing';
+import { OUTSIDE_MARGIN, type LayoutNode } from '../../src/visual/layout';
 import { radiusFor } from '../../src/visual/mapping';
 import {
   ARC_GAP,
@@ -100,20 +102,45 @@ const radiusOf = new Map(nodes.map((node) => [node.key, node.radius]));
 describe('planOrbits', () => {
   it('fills the inner orbits with the largest bodies first', () => {
     const plan = planOrbits(nodes);
-    const order = plan.rings.flatMap((ring) => ring.keys.map((key) => radiusOf.get(key)!));
-    for (let i = 1; i < order.length; i += 1) {
-      expect(order[i]).toBeLessThanOrEqual(order[i - 1]);
+    // 순위는 어느 궤도에 들어가는지만 정한다: 안쪽 궤도의 가장 작은 천체도 바깥 궤도의
+    // 가장 큰 천체보다 작지 않다.
+    for (let k = 1; k < plan.rings.length; k += 1) {
+      const innerSmallest = Math.min(...plan.rings[k - 1].keys.map((key) => radiusOf.get(key)!));
+      const outerLargest = Math.max(...plan.rings[k].keys.map((key) => radiusOf.get(key)!));
+      expect(innerSmallest).toBeGreaterThanOrEqual(outerLargest);
     }
-    expect(order).toHaveLength(nodes.length);
+    expect(plan.rings.flatMap((ring) => ring.keys)).toHaveLength(nodes.length);
   });
 
-  it('breaks radius ties by key so the order never flickers', () => {
-    const plan = planOrbits([
-      { key: 'b.exe:2', radius: 1 },
-      { key: 'a.exe:1', radius: 1 },
-      { key: 'c.exe:3', radius: 1 },
+  it('orders the bodies inside an orbit by key, not by radius', () => {
+    // 이웃한 두 천체의 순위가 바뀌어도 궤도 안의 자리는 그대로여야 서로를 뚫지 않는다.
+    const before = planOrbits([
+      { key: 'b.exe:2', radius: 1.02 },
+      { key: 'a.exe:1', radius: 1.0 },
+      { key: 'c.exe:3', radius: 0.9 },
     ]);
-    expect(plan.rings[0].keys).toEqual(['a.exe:1', 'b.exe:2', 'c.exe:3']);
+    const swapped = planOrbits([
+      { key: 'b.exe:2', radius: 1.0 },
+      { key: 'a.exe:1', radius: 1.02 },
+      { key: 'c.exe:3', radius: 0.9 },
+    ]);
+    expect(before.rings[0].keys).toEqual(['a.exe:1', 'b.exe:2', 'c.exe:3']);
+    expect(swapped.rings[0].keys).toEqual(before.rings[0].keys);
+  });
+
+  it('puts the same set of bodies in the same orbits whatever the input order', () => {
+    const plan = planOrbits(nodes);
+    for (const ring of plan.rings) {
+      expect(ring.keys).toEqual([...ring.keys].sort());
+    }
+  });
+
+  it('breaks radius ties by key when deciding which orbit a body joins', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({ key: `k${String(i).padStart(2, '0')}`, radius: 0.3 }));
+    const plan = planOrbits(many);
+    expect(plan.rings.length).toBeGreaterThan(1);
+    // 같은 반지름이면 key 순으로 안쪽 궤도부터 채운다.
+    expect(plan.rings[0].keys).toEqual(many.slice(0, plan.rings[0].keys.length).map((n) => n.key));
   });
 
   it('keeps each orbit within its share of the circumference', () => {
@@ -145,8 +172,9 @@ describe('planOrbits', () => {
     expect(plan.rings.length).toBeLessThanOrEqual(5);
     const last = plan.rings[plan.rings.length - 1];
     expect(plan.outerRadius).toBeCloseTo(last.radius + last.maxBodyRadius, 9);
-    // 코어 고리(RING_MIN_RADIUS 34)의 Orb 와 닿지 않는다.
-    expect(plan.outerRadius).toBeLessThan(32);
+    // 코어 고리의 Orb 와 닿지 않는다. 새 천체가 나타나는 자리(가장 바깥 궤도 + OUTSIDE_MARGIN)도
+    // 고리 안쪽이다.
+    expect(plan.outerRadius + OUTSIDE_MARGIN).toBeLessThan(RING_MIN_RADIUS);
   });
 
   it('is deterministic and ignores the input order', () => {
@@ -255,6 +283,11 @@ export function planOrbits(nodes: readonly LayoutNode[]): OrbitPlan {
       used += need;
       index += 1;
     }
+    // 순위는 어느 궤도에 들어가는지만 정한다. 궤도 안의 자리는 key 순으로 고정한다 —
+    // 메모리가 조금 흔들려 이웃한 두 천체의 순위가 바뀔 때마다 자리를 맞바꾸면 둘이 같은
+    // 궤도에서 서로를 뚫고 지나간다 (검토에서 실제 40 개 그룹으로 측정: 메모리가 초당
+    // 0.2% 흔들리면 프레임의 23% 에서 겹쳤다).
+    ring.keys.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     rings.push(ring);
     previous = ring;
   }
@@ -287,12 +320,12 @@ export function starGain(cpuPct: number | null): number {
 - [ ] **Step 4: 통과 확인 (GREEN)**
 
 Run: `npx vitest run --project node tests/visual/solar.test.ts`
-Expected: PASS, `Tests  10 passed (10)`.
+Expected: PASS, `Tests  12 passed (12)`.
 
 - [ ] **Step 5: 전체 확인**
 
 Run: `npm test; npm run typecheck; npm run lint`
-Expected: `Tests  284 passed (284)`, typecheck 출력 없음, lint 는 기존 `src/main.tsx` 경고 1개뿐.
+Expected: `Tests  286 passed (286)`, typecheck 출력 없음, lint 는 기존 `src/main.tsx` 경고 1개뿐.
 
 - [ ] **Step 6: 커밋**
 
@@ -306,7 +339,7 @@ git commit -m "feat(web): plan concentric orbits by memory rank for a solar layo
 ## Task 2: 궤도 배치기
 
 **Files:**
-- Modify (전체 교체): `web/src/visual/layout.ts`, `web/src/scene/sceneContext.ts`, `web/src/scene/SceneRoot.tsx`, `web/tests/visual/layout.test.ts`
+- Modify (전체 교체): `web/src/visual/layout.ts`, `web/src/visual/frameCache.ts`, `web/src/scene/sceneContext.ts`, `web/src/scene/SceneRoot.tsx`, `web/tests/visual/layout.test.ts`
 
 **Interfaces:**
 - Consumes: Task 1 의 `planOrbits`, `orbitSpeed`, `OrbitPlan`.
@@ -469,6 +502,30 @@ describe('OrbitLayout', () => {
     }
   });
 
+  it('does not let two bodies pass through each other when their memory ranks swap', () => {
+    const layout = new OrbitLayout();
+    layout.step(nodes, FRAME);
+    // 가장 큰 두 천체(같은 궤도)의 반지름을 서로 바꾼다 — 순위만 뒤집힌다.
+    const ranked = [...nodes].sort((a, b) => b.radius - a.radius);
+    const [first, second] = ranked;
+    const swapped = nodes.map((node) =>
+      node.key === first.key
+        ? { ...node, radius: second.radius }
+        : node.key === second.key
+          ? { ...node, radius: first.radius }
+          : node,
+    );
+    const before = { a: { ...layout.position(first.key)! }, b: { ...layout.position(second.key)! } };
+    let closest = Infinity;
+    for (let t = 0; t < SETTLE_TAU * 10; t += FRAME) {
+      layout.step(swapped, FRAME);
+      closest = Math.min(closest, distance(layout.position(first.key)!, layout.position(second.key)!));
+    }
+    // 두 천체는 자리를 맞바꾸지 않고, 서로 겹치는 데까지 다가가지도 않는다.
+    expect(closest).toBeGreaterThan(first.radius + second.radius - 0.5);
+    expect(distance(layout.position(first.key)!, before.a)).toBeLessThan(first.radius + second.radius + 30);
+  });
+
   it('forgets keys that disappear', () => {
     const layout = new OrbitLayout();
     layout.step(nodes, FRAME);
@@ -574,7 +631,7 @@ export interface LayoutNode {
   radius: number;
 }
 
-// 태양계형 배치 스펙 5절. 그룹은 메모리 순위로 정한 동심원 궤도(visual/orbits.ts)를
+// 태양계형 배치 스펙 5절. 그룹은 메모리 순위로 정한 동심원 궤도(visual/solar.ts 의 planOrbits)를
 // 따라 공전한다. 궤도나 자리가 바뀌면 극좌표(반지름, 각)에서 부드럽게 옮겨 간다 —
 // 순간이동하지 않고, 가운데를 가로지르지도 않는다.
 
@@ -682,7 +739,7 @@ const FLOAT_AMPLITUDE = 0.2;
 const SALT_FLOAT_PERIOD = 21;
 const SALT_FLOAT_PHASE = 24;
 
-// 부유. 시뮬레이션 상태에는 들어가지 않고 그릴 때만 더한다 — 계약서 7.1 절.
+// 부유. 배치 상태에는 들어가지 않고 그릴 때만 더한다 — 계약서 7.1 절.
 // 축마다 주기(6~10 초)와 위상이 key 해시로 다르다.
 export function floatOffset(key: string, timeSec: number): Vec3 {
   const axis = (i: number) => {
@@ -705,6 +762,65 @@ export function floatingPosition(
   }
   const offset = floatOffset(key, timeSec);
   return { x: base.x + offset.x, y: base.y + offset.y, z: base.z + offset.z };
+}
+```
+
+- [ ] **Step 4a: `web/src/visual/frameCache.ts` 전체 교체 (주석만 바뀐다)**
+
+```ts
+import type { InterpolatedGroup, InterpolatedSnapshot } from '../state/interpolator';
+import type { LayoutNode } from './layout';
+import { radiusFor } from './mapping';
+
+// 스펙 4절. 장면 루트가 프레임마다 한 번 채우고, 노드들은 key 로 읽는다.
+// React 상태가 아니라 가변 객체다 — 매 프레임 새로 만들지 않는다.
+export interface FrameCache {
+  snapshot: InterpolatedSnapshot | null;
+  byKey: Map<string, InterpolatedGroup>;
+  // activityFor 의 코어 수. 현재 스냅샷의 cores.length, 최소 1.
+  coreCount: number;
+  // performance.now() 기준 초. 노드의 부유와 툴팁이 같은 시각을 쓰게 한다.
+  // 한 번도 갱신되지 않았으면 null.
+  timeSec: number | null;
+  // 직전 갱신과의 간격(초). 첫 갱신은 0.
+  dtSec: number;
+}
+
+export function createFrameCache(): FrameCache {
+  return { snapshot: null, byKey: new Map(), coreCount: 1, timeSec: null, dtSec: 0 };
+}
+
+export function updateFrameCache(
+  cache: FrameCache,
+  snapshot: InterpolatedSnapshot | null,
+  nowMs: number,
+): void {
+  const timeSec = nowMs / 1000;
+  cache.dtSec = cache.timeSec === null ? 0 : Math.max(0, timeSec - cache.timeSec);
+  cache.timeSec = timeSec;
+
+  cache.snapshot = snapshot;
+  cache.byKey.clear();
+  if (snapshot === null) {
+    return;
+  }
+  for (const group of snapshot.groups) {
+    cache.byKey.set(group.key, group);
+  }
+  cache.coreCount = Math.max(1, snapshot.cores.length);
+}
+
+// 궤도 배치(OrbitLayout)의 입력. M5 부터는 스냅샷의 그룹이 아니라 존재 추적기의
+// 항목(떠나는 중인 그룹 포함)을 넘긴다 — 사라지는 천체도 연출이 끝날 때까지
+// 제자리를 지켜야 한다.
+export function layoutNodesFrom(
+  groups: Iterable<Pick<InterpolatedGroup, 'key' | 'mem_mb'>>,
+): LayoutNode[] {
+  const nodes: LayoutNode[] = [];
+  for (const group of groups) {
+    nodes.push({ key: group.key, radius: radiusFor(group.mem_mb) });
+  }
+  return nodes;
 }
 ```
 
@@ -1031,17 +1147,17 @@ export function SceneRoot() {
 - [ ] **Step 6: 통과 확인 (GREEN)**
 
 Run: `npx vitest run --project node tests/visual/layout.test.ts`
-Expected: PASS, `Tests  15 passed (15)`.
+Expected: PASS, `Tests  16 passed (16)`.
 
 - [ ] **Step 7: 전체 확인**
 
 Run: `npm test; npm run typecheck; npm run lint`
-Expected: `Tests  281 passed (281)` (힘 시뮬레이션 전용 테스트 18 개가 궤도 테스트 15 개로 바뀐다), typecheck 깨끗, lint 기존 경고 1개.
+Expected: `Tests  284 passed (284)` (힘 시뮬레이션 전용 테스트 18 개가 궤도 테스트 16 개로 바뀐다), typecheck 깨끗, lint 기존 경고 1개.
 
 - [ ] **Step 8: 커밋**
 
 ```
-git add src/visual/layout.ts src/scene/sceneContext.ts src/scene/SceneRoot.tsx tests/visual/layout.test.ts
+git add src/visual/layout.ts src/visual/frameCache.ts src/scene/sceneContext.ts src/scene/SceneRoot.tsx tests/visual/layout.test.ts
 git commit -m "feat(web): replace the force layout with orbiting bodies that glide between orbits"
 ```
 
@@ -1663,7 +1779,7 @@ export function SceneRoot() {
 
 Run: `npm test; npm run typecheck; npm run lint; npm run build`
 Expected:
-- `Tests  281 passed (281)`, `act(`·key 경고 없음
+- `Tests  284 passed (284)`, `act(`·key 경고 없음
 - typecheck 출력 없음
 - lint 오류 0, 경고는 기존 `src/main.tsx` 1개뿐
 - build 성공, `index-*.js` 약 1.48 MB
@@ -1683,7 +1799,7 @@ git commit -m "feat(web): draw the system star and orbit lines, widen the core r
 
 ## 완료 조건 (컨트롤러가 확인)
 
-- [ ] `npm test`(281), `npm run typecheck`, `npm run lint`(기존 경고 1개), `npm run build` 통과.
+- [ ] `npm test`(284), `npm run typecheck`, `npm run lint`(기존 경고 1개), `npm run build` 통과.
 - [ ] `web/src/visual/orbits.ts` 가 바뀌지 않았다 (`git diff main -- web/src/visual/orbits.ts` 비어 있음).
 - [ ] 브라우저 (엔진 + dev 서버 또는 `run.bat`):
   - 가운데 별, 동심원 궤도 몇 개, 큰 천체가 안쪽 궤도에 겹치지 않고 놓임, 바깥에 코어 고리. 이전 스크린샷과 비교.
