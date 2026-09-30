@@ -7,7 +7,7 @@ on:
 
 jobs:
   web:
-    runs-on: windows-latest
+    runs-on: windows-2022
     defaults:
       run:
         working-directory: web
@@ -25,7 +25,7 @@ jobs:
       - run: npm run build
 
   engine:
-    runs-on: windows-latest
+    runs-on: windows-2022
     env:
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\.vcpkg-cache
     steps:
