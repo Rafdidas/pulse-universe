@@ -13,6 +13,9 @@ import { STAR_RADIUS } from '../visual/solar';
 import { FRAME_PRIORITY } from './framePriority';
 import { useSceneContext, type Hovered, type SceneContextValue } from './sceneContext';
 
+// 툴팁은 이름표(BodyLabels 의 LABEL_Z [900, 0])보다 위에 그린다.
+const TOOLTIP_Z: [number, number] = [16777271, 1000];
+
 interface Label {
   position: Vec3;
   radius: number;
@@ -123,7 +126,7 @@ export function Tooltip({ target }: Props) {
 
   return (
     <group ref={anchor}>
-      <Html center style={{ pointerEvents: 'none' }}>
+      <Html center zIndexRange={TOOLTIP_Z} style={{ pointerEvents: 'none' }}>
         <div ref={box} className="universe-tooltip" style={{ display: 'none' }}>
           <div ref={name} className="universe-tooltip-name" />
           <div ref={detail} />

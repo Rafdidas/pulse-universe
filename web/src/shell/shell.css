@@ -173,6 +173,7 @@
 }
 
 .legend-collapsed {
+  font-size: 12px;
   padding: 4px 8px;
   background: rgba(20, 24, 29, 0.85);
   border: 1px solid #2a313a;

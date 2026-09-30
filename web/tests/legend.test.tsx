@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useFocusStore } from '../src/scene/focusStore';
 import { Legend } from '../src/shell/Legend';
 
 const KEY = 'pulse.legend';
@@ -14,6 +15,7 @@ function pressH(init: KeyboardEventInit = {}, target: Window | Element = window)
 describe('Legend', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    useFocusStore.getState().clear();
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -63,6 +65,16 @@ describe('Legend', () => {
     pressH({}, screen.getByLabelText('field'));
     pressH({ ctrlKey: true });
     pressH({ repeat: true });
+    expect(screen.getByRole('complementary', { name: 'Legend' })).toBeInTheDocument();
+  });
+
+  it('hides while a group is focused so it never covers the focus panel', () => {
+    render(<Legend />);
+    act(() => useFocusStore.getState().toggle('a.exe:1'));
+    expect(screen.queryByRole('complementary', { name: 'Legend' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Legend/ })).toBeNull();
+
+    act(() => useFocusStore.getState().clear());
     expect(screen.getByRole('complementary', { name: 'Legend' })).toBeInTheDocument();
   });
 

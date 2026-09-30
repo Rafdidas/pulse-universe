@@ -9,6 +9,10 @@ import { radiusFor } from '../visual/mapping';
 import { FRAME_PRIORITY } from './framePriority';
 import { useSceneContext } from './sceneContext';
 
+// 이름표는 툴팁(TOOLTIP_Z 범위)보다 아래에 그린다. drei 는 카메라 거리로 z-index 를 정하므로
+// 범위가 겹치면 앞쪽 이름표가 툴팁을 덮는다.
+const LABEL_Z: [number, number] = [900, 0];
+
 // 초점이 이만큼 이상 잡히면 이름표를 숨긴다. 위성과 패널이 그 역할을 한다.
 const HIDE_WEIGHT = 0.5;
 
@@ -82,7 +86,7 @@ function BodyLabel({ nodeKey }: Props) {
 
   return (
     <group ref={anchor}>
-      <Html center style={{ pointerEvents: 'none' }}>
+      <Html center zIndexRange={LABEL_Z} style={{ pointerEvents: 'none' }}>
         <div ref={box} className="universe-label" style={{ display: 'none' }} />
       </Html>
     </group>

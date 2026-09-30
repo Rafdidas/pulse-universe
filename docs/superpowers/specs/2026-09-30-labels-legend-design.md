@@ -21,15 +21,15 @@
 ## 3. 별 호버 (D66)
 
 - `sceneContext.ts` 의 `Hovered` 에 `{ kind: 'system' }` 를 더한다.
-- `SystemStar` 의 본체 메시가 `onPointerOver`·`onPointerOut` 을 받는다 (`raycast` 무시를 뺀다). 후광 메시는 계속 `raycast={() => null}` 이다. 클릭은 아무것도 하지 않는다.
-- `Tooltip.labelFor` 가 `system` 을 다룬다: 위치 = 원점, 반지름 = `STAR_RADIUS`, 제목 `System`, 세부 `visual/labels.ts` 의 `systemDetail(system)`.
+- `SystemStar` 의 본체 메시가 `onPointerOver`·`onPointerOut` 을 받는다 (`raycast` 무시를 뺀다). 후광 메시는 계속 `raycast={() => null}` 이다. 클릭하면 초점을 푼다 (빈 곳을 누른 것과 같다). 별이 클릭을 받으면서 뒤에 있는 천체로 클릭이 새는 것을 막아야 하고, 예전에 가운데가 빈 곳이라 `onPointerMissed` 로 초점이 풀리던 동작도 이어야 한다 (최종 리뷰 I1).
+- `Tooltip.labelFor` 가 `system` 을 다룬다: 위치 = 원점, 반지름 = `STAR_RADIUS`, 제목 `System`, 세부 `visual/labels.ts` 의 `systemDetail(system)` (CPU 모름은 `CPU -%`. `formatPct` 와 같은 출력을 내지만 순수 모듈 규칙상 `dashboard/` 를 import 하지 않고 다시 구현한다).
 - `systemDetail(system: SystemTotals)`: `CPU 12.3% · Mem 26.3 / 32.5 GB · 406 procs · 8,481 threads`. CPU 가 `null` 이면 `CPU -`. 메모리는 GB 로 소수 한 자리. 숫자는 `dashboard/format.ts` 의 `formatPct` 를 쓴다.
 - `FlowStreams.highlightFor` 는 `system` 을 호버 없음처럼 다룬다 (모든 선 밝게). `Satellites` 등 다른 호버 소비자도 `system` 을 무시한다.
 
 ## 4. 이름표 (D67)
 
 - `scene/BodyLabels.tsx`: `layout.plan().rings[0]?.keys` 가 바뀔 때(문자열 signature 비교)만 React 상태를 갱신해 `BodyLabel` 을 그린다.
-- `BodyLabel(key)`: drei `Html` + 앵커 그룹. 툴팁과 같이 `useFrame`(우선순위 `FRAME_PRIORITY.tooltip`)에서 앵커를 `floatingPosition(layout, key, timeSec)` + 반지름 × 1.2 위로 옮기고, 글자는 DOM 에 직접 쓴다. 존재 추적기에서 `fading-out`·`collapsing` 이면 숨긴다.
+- `BodyLabel(key)`: drei `Html` + 앵커 그룹. 툴팁과 같이 `useFrame`(우선순위 `FRAME_PRIORITY.tooltip`)에서 앵커를 `floatingPosition(layout, key, timeSec)` + 반지름 × 1.25 위로 옮기고, 글자는 DOM 에 직접 쓴다. 존재 추적기에서 `fading-out`·`collapsing` 이면 숨긴다.
 - 글자: 그룹 이름. 작은 회색 글씨(툴팁보다 작고 배경 없음), `pointer-events: none`.
 - 초점 중(`focus.weight > 0.5`)에는 숨긴다. 호버 중인 천체는 툴팁이 있으므로 그 이름표는 숨긴다.
 - 대상 판정은 순수 함수 `labelKeys(plan: OrbitPlan, limit: number): string[]` (`visual/labels.ts`): 첫 궤도의 key 를 최대 `MAX_LABELS = 8` 개.
@@ -50,6 +50,9 @@ Legend                              [H]
 
 - 접으면 `Legend [H]` 한 줄. 상태는 `localStorage['pulse.legend']` (`'hidden'` 이면 접힘, 없거나 그 밖이면 펼침). 저장이 막힌 환경(예외)에서는 펼침으로 시작하고 저장은 건너뛴다.
 - `H` 는 `shell/shortcut.ts` 의 `isShortcut(event, 'h')` 로 처리한다 (IME·수정 키·입력창 규칙 공용).
+- **초점 중에는 범례를 숨긴다** (`focusStore.focusedKey !== null`). FocusPanel 이 오른쪽에서 아래까지 내려와 범례를 덮기 때문이다 (최종 리뷰 I2). 접은 상태(`localStorage`)는 건드리지 않는다.
+- 이름표 z-index: drei `Html` 은 카메라 거리로 z-index 를 정하므로 범위가 겹치면 앞쪽 이름표가 툴팁을 덮는다. 이름표는 `[900, 0]`, 툴팁은 `[16777271, 1000]` 으로 나눈다.
+- 이름표 대상은 첫 궤도의 key 오름차순 앞 8 개다. 첫 궤도에 8 개를 넘는 천체가 있으면 가장 큰 8 개가 아니라 이름 순 8 개다 (궤도 안 자리가 key 순이고 `OrbitPlan` 에 반지름이 없다). 기본 40 그룹에서는 첫 궤도가 4~6 개라 해당하지 않는다.
 - 패널은 `pointer-events` 를 받지만 캔버스의 드래그를 가로채지 않게 작게 둔다. 성능 표시(`P`, 왼쪽 아래)·FocusPanel(오른쪽 위)과 겹치지 않는다.
 
 ## 6. 모듈 구조
@@ -64,7 +67,7 @@ web/src/scene/FlowStreams.tsx (전체 교체) system 은 호버 없음처럼
 web/src/scene/SceneRoot.tsx   (전체 교체) BodyLabels 마운트
 web/src/shell/Legend.tsx      범례
 web/src/shell/Shell.tsx       (전체 교체) 우주 화면에 Legend
-web/src/shell/shell.css       (전체 교체) .universe-label, .legend
+web/src/shell/shell.css       (끝에 붙임) .universe-label, .legend
 ```
 
 `visual/**` 순수성 규칙은 그대로다.

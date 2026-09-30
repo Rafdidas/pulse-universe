@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { useFocusStore } from '../scene/focusStore';
 import { isShortcut } from './shortcut';
 
 // 이름표·별 정보 스펙 5절. 우주 화면을 읽는 법. 접은 상태는 브라우저에 기억한다.
@@ -24,6 +25,8 @@ function writeHidden(hidden: boolean): void {
 
 export function Legend() {
   const [hidden, setHidden] = useState(readHidden);
+  // 초점 중에는 FocusPanel(오른쪽)이 아래까지 내려와 범례를 덮는다. 초점이 풀릴 때까지 숨긴다.
+  const focused = useFocusStore((state) => state.focusedKey !== null);
 
   const toggle = (): void => setHidden((current) => !current);
   // 상태가 바뀔 때마다 기억한다. 상태 갱신 함수 안에서 저장하지 않는다 (순수해야 한다).
@@ -39,6 +42,10 @@ export function Legend() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
+
+  if (focused) {
+    return null;
+  }
 
   if (hidden) {
     return (
