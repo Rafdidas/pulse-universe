@@ -348,3 +348,18 @@ TEST_CASE("a sample without a thread mapping keeps estimating flows", "[aggregat
         REQUIRE(f.source == "estimated");
     }
 }
+
+TEST_CASE("measured flows to cores missing from the core list are dropped", "[aggregate][measured]") {
+    // ETW 코어 번호는 프로세서 그룹을 넘어 이어지지만 코어 부하는 그룹 0 만 본다.
+    DataAggregator aggregator(2);
+    RawSample sample = makeSample({makeProcess(10, 0, "a.exe", 1000, 100ull * 1024 * 1024)}, 1000);
+    RawThreadMapping mapping;
+    mapping.window_seconds = 1.0;
+    mapping.run_times = {RawRunTime{10, 1, 0.5}, RawRunTime{10, 70, 0.4}};
+    sample.thread_mapping = mapping;
+
+    const auto snap = aggregator.aggregate(sample);
+
+    REQUIRE(snap.flows.size() == 1);
+    REQUIRE(snap.flows[0].core == 1);
+}

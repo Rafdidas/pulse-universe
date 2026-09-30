@@ -53,6 +53,27 @@ whale.exe            27.1%   c8   8%  c10  5%  c2   3%  c12  2%  c6   2%
   커널은 코어마다 버퍼를 따로 잡는다. 작업 집합은 최소 버퍼 수보다 버퍼 크기 × 코어 수를 따른다 (최소 64 → 16 은 변화 없음, 1 MB → 256 KB 에서 71 → 29 MB). 256 KB 에서 대기·부하 모두 버퍼 유실 0.
 - 종료: `--iterations` 로 스스로 끝나면 세션이 남지 않는다. `Stop-Process -Force` 로 죽이면 `PulseUniverse-Sched` 가 남고, 다음 실행이 시작 때 멈추고 새로 연다 (확인함).
 
+### 2.2 검토에서 나온 우려의 검증
+
+최종 리뷰는 두 가지를 우려했다. 둘 다 정답을 아는 부하로 직접 재어 본 뒤 결론을 냈다.
+
+**(1) 코어 간 시계 어긋남.** 실시간 ETW 는 코어별 버퍼를 따로 넘기므로, 한가한 코어의 마지막 이벤트가 바쁜 코어보다 늦게 도착하면 `drain()` 이 그 코어의 마지막 스레드를 창 끝까지 돈 것으로 잡을 수 있다는 우려였다. 정답값은 엔진 밖에서 만든 부하 프로세스가 스스로 잰 바쁜 시간이다 (스피너 = 100%, 버스트 = 5 ms 바쁨 + 대기의 실측 합, 희소 스레드 = 250 ms 마다 1 ms). ETW 가 그 프로세스에 귀속한 코어 수를 정답값으로 나눈 비:
+
+| 부하 | 수집기 그대로 (창을 지연하지 않음) | 창을 1.5 초 물려 닫는 변형 |
+|---|---|---|
+| 스피너 4 + 버스트 2 | 1.004 | 1.002 |
+| 버스트 8 | 1.021 | 1.008 |
+| 버스트 16 | 1.001 | 0.996 |
+| 스피너 2 + 버스트 16 | 1.001 | 1.003 |
+| 스피너 1 + 희소 24 | 1.009 | 1.014 |
+| 스피너 3 + 희소 64 | 1.001 | 1.001 |
+| 스피너 4 + 버스트 4 + 희소 32 | 1.001 | 1.001 |
+
+오차는 어느 쪽에서도 2% 안이고, 지연을 두어도 나아지지 않는다. 그래서 창을 지연해 닫는 복잡한 구조(이벤트를 모아 두었다가 시각 순서로 정산)는 넣지 않는다. 우려가 옳다면 한가한 코어가 많은 희소 부하에서 비가 1 을 크게 넘어야 하는데 그렇지 않았다. 참고로 처음에는 프로세스 CPU 시간(`GetProcessTimes`)을 정답값으로 썼다가 짧은 버스트에서 13% 어긋나 보였다 — 그 값이 15.6 ms 틱 표집이라 부정확한 것이었다.
+
+**(2) Ctrl+C.** `--serve` 는 정상 종료하고 세션이 남지 않는다 (asio 가 신호를 받는다). 신호 처리가 없는 `--dump`·`--json` 은 죽을 때 소멸자가 돌지 못해 세션이 남았다 → 8절의 콘솔 핸들러로 고쳤고, 고친 뒤 `--dump`·`--serve` 모두 Ctrl+C 뒤에 세션이 남지 않음을 확인했다. 두 엔진을 동시에 띄우면 둘째는 뮤텍스 때문에 `estimated` 로 물러나고 첫째의 세션은 그대로 살아 있음을 확인했다.
+
+
 ## 3. 확정된 결정
 
 | # | 결정 | 이유 |
@@ -101,7 +122,7 @@ struct HostInfo {
 
 - `threadStarted(pid, tid)` — Thread Start / DCStart(런다운). tid → pid.
 - `threadEnded(tid)` — Thread End. 표에서 지운다 (그 스레드가 아직 코어에 올라가 있으면 다음 전환에서 정산된 뒤 사라진다).
-- `contextSwitch(core, newTid, ts)` — 코어 `core` 의 현재 조각(이전 스레드, 시작 시각)을 `ts` 까지 정산하고 새 조각을 연다. 이전 스레드의 pid 를 모르면 `unknownTicks` 로만 센다. pid 0(Idle)은 쌓지 않는다.
+- `contextSwitch(core, newTid, ts)` — 코어 `core` 의 현재 조각(이전 스레드, 조각을 열 때 알던 pid, 시작 시각)을 `ts` 까지 정산하고 새 조각을 연다. 정산 때 pid 는 스레드 표에서 다시 찾고, 그 사이 스레드가 끝나 표에 없으면 조각을 열 때 알던 pid 를 쓴다. 둘 다 몰라 pid 가 0 이면(Idle 도 0) 쌓지 않는다.
 - `drain() -> RawThreadMapping` — 창을 닫는다. 기준 시각 `now` 는 지금까지 본 이벤트 시각의 최댓값이다. 코어마다 진행 중인 조각을 `now` 까지 정산하고 조각 시작을 `now` 로 옮긴다 (문맥 전환 없이 코어를 독점한 스레드도 센다). 창 길이 = `now − 직전 drain 의 now`. 첫 drain 은 첫 이벤트 시각부터다. 이벤트가 하나도 없었으면 창 길이 0, 빈 목록.
 - 이벤트가 `now` 보다 이른 시각으로 늦게 도착하면(버퍼 병합 차이) 정산 길이는 0 으로 자른다.
 
@@ -114,6 +135,7 @@ struct HostInfo {
 - `FlowConfig` 의 `min_weight` 미만은 버리고 그룹당 `max_flows_per_group` 개를 weight 내림차순으로 남긴다 (FlowEstimator 와 같은 규칙).
 - `source = "measured"`.
 - 화면에 남은 그룹(`snapshot.groups`)에 대해서만 만든다.
+- `DataAggregator` 는 `cores[]` 에 없는 코어로 가는 흐름을 버린다. ETW 의 코어 번호는 프로세서 그룹을 가로질러 이어지지만 코어 부하(PDH)는 그룹 0 만 보므로, 64 개를 넘는 기계에서는 그릴 곳이 없다.
 
 `DataAggregator` 7단계: `sample.thread_mapping` 이 있으면 `measuredFlows`, 없으면 `flow_estimator_.estimate`.
 
@@ -123,7 +145,9 @@ struct HostInfo {
 - 사용 이벤트: 세션 속성의 `EnableFlags = EVENT_TRACE_FLAG_PROCESS | THREAD | CSWITCH`.
 - 소비: 별도 스레드에서 `OpenTraceW`(실시간, EVENT_RECORD) + `ProcessTrace`. 콜백은 Thread 공급자(`{3d6fa8d1-…}`) opcode 1·3(Start·DCStart) → `threadStarted`, 2(End) → `threadEnded`, 36(CSwitch) → `contextSwitch(GetEventProcessorIndex, NewThreadId, TimeStamp)`. 페이로드는 앞의 uint32 들만 읽는다 (Thread: ProcessId, TThreadId / CSwitch: NewThreadId).
 - `ProcessTrace` 는 세션 시작 뒤의 스레드만 Start 로 알린다. 이미 있던 스레드는 세션을 켤 때 커널이 보내는 DCStart 런다운으로 채운다 (2절 측정에서 DCStart 8,400여 건 확인).
-- 종료: 소멸자에서 `ControlTraceW(STOP)` → 소비 스레드 join → `CloseTrace`.
+- 종료: 소멸자에서 `ControlTraceW(STOP)` → `CloseTrace` → 소비 스레드 join. `CloseTrace` 를 join 앞에 둔 것은 STOP 이 실패해도 `ProcessTrace` 가 풀리게 하려는 것이다.
+- 소유권: 세션을 열기 전에 이름 붙은 뮤텍스 `Global\PulseUniverse-Sched-Owner` 를 만든다. 이미 있으면 살아 있는 다른 엔진이 쓰는 세션이므로 멈추지 않고 실패한다 (`auto` 는 그 이유로 추정으로 간다). 뮤텍스는 프로세스가 죽으면 커널이 닫으므로, 뮤텍스가 없는데 세션이 남아 있다면 죽은 엔진의 것이라 시작 때 멈춰도 안전하다.
+- 콘솔 종료 신호: `main` 이 콘솔 핸들러를 달아, Ctrl+C·창 닫기로 죽을 때 이름으로 세션을 멈춘다 (`--dump`·`--json` 은 신호 처리가 없어 소멸자가 돌지 못한다). `--serve` 는 asio 가 Ctrl+C 를 먼저 받아 정상 종료하므로 소멸자가 멈춘다.
 - `WindowsSystemReader::read()` 가 수집기가 있으면 `drain()` 결과를 `RawSample::thread_mapping` 에 싣는다.
 - 틱/초: `PROCESS_TRACE_MODE_RAW_TIMESTAMP` 없이 열면 `ProcessTrace` 가 시각을 FILETIME(100 ns)으로 바꿔 준다. 1e7.
 
@@ -132,7 +156,7 @@ struct HostInfo {
 - `--mapping auto|estimated|measured` (`cli/Options`). 기본 `auto`.
 - `auto`: 관리자 권한이 아니거나 세션 시작이 실패하면 추정으로 동작하고 stderr 에 이유 한 줄. `estimated`: 수집기를 만들지 않는다. `measured`: 실패하면 이유를 출력하고 종료 코드 1.
 - `HostInfo::thread_mapping` 은 수집기가 시작됐으면 `"measured"`. hello 의 `capabilities.thread_mapping` 이 이 값이다. hello 는 엔진이 시작할 때 한 번 만들어지므로 "엔진 시작 시점의 상태" 다.
-- 수집기가 도중에 죽으면(`ProcessTrace` 가 오류로 돌아옴) 이후 표본은 `thread_mapping` 을 비워 추정으로 돌아간다. `flows[].source` 는 매 스냅샷의 실제 출처다. 계약서의 "두 값 일치" 규칙은 수집기가 살아 있는 동안 유지되며, 이 예외를 계약서 4.3절 정정으로 적는다.
+- 수집기가 도중에 죽으면(`ProcessTrace` 가 오류로 돌아옴) stderr 에 한 줄을 남기고 이후 표본은 `thread_mapping` 을 비워 추정으로 돌아간다. 창이 아직 길이를 갖지 못한 표본(기동 직후 첫 표본, 이벤트가 아직 안 온 표본)도 `thread_mapping` 이 비어 추정이 된다 — 빈 창을 실측으로 내보내면 그 스냅샷의 `flows` 가 비기 때문이다. `flows[].source` 는 매 스냅샷의 실제 출처다. 계약서의 "두 값 일치" 규칙은 수집기가 살아 있는 동안 유지되며, 이 예외를 계약서 4.3절 정정으로 적는다.
 - 모든 모드에서 시작할 때 stderr 에 한 줄: `thread mapping: measured (ETW)`, 또는 `auto` 가 물러설 때 `thread mapping: estimated - <이유>`. `--json` 의 stdout 은 그대로다. `--dump` 표는 바꾸지 않는다.
 
 ## 9. 모듈 구조
@@ -155,7 +179,7 @@ docs/.../2026-09-22-pulse-universe-contract-design.md  4.3·6.2절 정정
 ## 10. 실패 동작
 
 - 권한 없음 / 세션 시작 실패 / 같은 이름 세션을 멈추지 못함 → 8절 규칙.
-- 이벤트 유실: 세션의 `EventsLost` 를 drain 때 읽어 늘어났으면 stderr 에 한 번 경고 (반복 출력은 10초에 한 번).
+- 이벤트 유실: 세션의 `EventsLost`(커널이 버퍼를 못 채워 잃음)와 `RealTimeBuffersLost`(소비자가 늦어 잃은 버퍼) 를 drain 때 읽어 어느 쪽이든 늘었으면 stderr 에 경고 (반복 출력은 10초에 한 번).
 - 엔진이 강제 종료되어 세션이 남으면 다음 실행이 시작 때 정리한다 (7절).
 
 ## 11. 테스트 전략

@@ -40,6 +40,9 @@ constexpr ULONG kFlushSeconds = 1;
 // 으로 바꿔 준다.
 constexpr double kTicksPerSecond = 1e7;
 
+// 세션 소유권을 나타내는 이름 붙은 뮤텍스. 살아 있는 다른 엔진의 세션을 멈추지 않게 한다.
+constexpr const wchar_t* kOwnerMutexName = L"Global\\PulseUniverse-Sched-Owner";
+
 // 유실 경고를 이보다 자주 찍지 않는다.
 constexpr int64_t kLostWarningIntervalMs = 10000;
 
@@ -120,12 +123,31 @@ void WINAPI onEventRecord(PEVENT_RECORD record) {
 EtwSchedulerCollector::EtwSchedulerCollector()
     : properties_(makeProperties()), table_(kTicksPerSecond) {}
 
+void EtwSchedulerCollector::stopSessionByName() {
+    std::vector<unsigned char> props = makeProperties();
+    ::ControlTraceW(0, kSessionName, asProperties(props), EVENT_TRACE_CONTROL_STOP);
+}
+
 std::unique_ptr<EtwSchedulerCollector> EtwSchedulerCollector::start(std::string& error) {
     std::unique_ptr<EtwSchedulerCollector> collector(new EtwSchedulerCollector());
 
-    // 엔진이 강제 종료되면 세션이 커널에 남는다. 같은 이름으로 다시 열기 전에 멈춘다.
-    std::vector<unsigned char> stale = makeProperties();
-    ::ControlTraceW(0, kSessionName, asProperties(stale), EVENT_TRACE_CONTROL_STOP);
+    // 살아 있는 다른 엔진이 이 세션을 쓰고 있으면 건드리지 않는다. 뮤텍스는 그 프로세스가
+    // 죽으면 커널이 없애므로, 이미 있는데 소유자가 없는 경우는 없다.
+    HANDLE owner = ::CreateMutexW(nullptr, FALSE, kOwnerMutexName);
+    if (owner == nullptr) {
+        error = "CreateMutex failed with error " + std::to_string(::GetLastError());
+        return nullptr;
+    }
+    if (::GetLastError() == ERROR_ALREADY_EXISTS) {
+        ::CloseHandle(owner);
+        error = "another pulse-engine is already measuring thread mapping";
+        return nullptr;
+    }
+    collector->owner_mutex_ = owner;
+
+    // 소유자가 없는 세션은 엔진이 강제 종료되며 커널에 남은 것이다. 같은 이름으로 다시
+    // 열기 전에 멈춘다.
+    stopSessionByName();
 
     TRACEHANDLE session = 0;
     const ULONG started =
@@ -155,13 +177,19 @@ std::unique_ptr<EtwSchedulerCollector> EtwSchedulerCollector::start(std::string&
     collector->thread_ = std::thread([self] {
         TRACEHANDLE handle = self->consumer_;
         // 세션이 멈추거나 CloseTrace 가 불릴 때까지 돌아오지 않는다.
-        ::ProcessTrace(&handle, 1, nullptr, nullptr);
+        const ULONG result = ::ProcessTrace(&handle, 1, nullptr, nullptr);
         self->running_ = false;
+        if (!self->stopping_) {
+            // 엔진이 끝나는 중이 아닌데 멈췄다. 이후 표본은 추정이 된다.
+            std::fprintf(stderr, "thread mapping: ETW stopped unexpectedly (error %lu), using the estimate\n",
+                         static_cast<unsigned long>(result));
+        }
     });
     return collector;
 }
 
 EtwSchedulerCollector::~EtwSchedulerCollector() {
+    stopping_ = true;
     if (session_ != 0) {
         ::ControlTraceW(session_, nullptr, asProperties(properties_), EVENT_TRACE_CONTROL_STOP);
     }
@@ -170,6 +198,9 @@ EtwSchedulerCollector::~EtwSchedulerCollector() {
     }
     if (thread_.joinable()) {
         thread_.join();
+    }
+    if (owner_mutex_ != nullptr) {
+        ::CloseHandle(static_cast<HANDLE>(owner_mutex_));
     }
 }
 
@@ -194,7 +225,11 @@ std::optional<RawThreadMapping> EtwSchedulerCollector::drain() {
     }
     warnIfEventsLost();
     std::lock_guard<std::mutex> lock(mutex_);
-    return table_.drain();
+    RawThreadMapping mapping = table_.drain();
+    if (mapping.window_seconds <= 0.0) {
+        return std::nullopt;
+    }
+    return mapping;
 }
 
 void EtwSchedulerCollector::warnIfEventsLost() {
@@ -203,16 +238,21 @@ void EtwSchedulerCollector::warnIfEventsLost() {
         ERROR_SUCCESS) {
         return;
     }
-    const unsigned long lost = asProperties(query)->EventsLost;
-    if (lost <= events_lost_) {
+    // EventsLost 는 커널이 버퍼를 못 채워 잃은 이벤트, RealTimeBuffersLost 는 소비자가
+    // 늦어 잃은 버퍼다. 둘 다 그 구간의 실행 시간을 잘못 귀속시킨다.
+    const unsigned long events = asProperties(query)->EventsLost;
+    const unsigned long buffers = asProperties(query)->RealTimeBuffersLost;
+    if (events <= events_lost_ && buffers <= buffers_lost_) {
         return;
     }
     const int64_t now = steadyMs();
     if (last_warning_ms_ != 0 && now - last_warning_ms_ < kLostWarningIntervalMs) {
         return;
     }
-    std::fprintf(stderr, "thread mapping: ETW dropped %lu events so far\n", lost);
-    events_lost_ = lost;
+    std::fprintf(stderr, "thread mapping: ETW dropped %lu events and %lu buffers so far\n", events,
+                 buffers);
+    events_lost_ = events;
+    buffers_lost_ = buffers;
     last_warning_ms_ = now;
 }
 

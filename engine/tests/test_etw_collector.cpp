@@ -58,3 +58,20 @@ TEST_CASE("the ETW session is gone after the collector is destroyed", "[etw]") {
     std::unique_ptr<EtwSchedulerCollector> again = EtwSchedulerCollector::start(error);
     REQUIRE(again != nullptr);
 }
+
+TEST_CASE("a second collector does not take over a live session", "[etw]") {
+    std::string error;
+    std::unique_ptr<EtwSchedulerCollector> first = EtwSchedulerCollector::start(error);
+    if (first == nullptr) {
+        SKIP("ETW collector unavailable: " + error);
+    }
+
+    std::string second_error;
+    std::unique_ptr<EtwSchedulerCollector> second = EtwSchedulerCollector::start(second_error);
+
+    REQUIRE(second == nullptr);
+    REQUIRE(second_error == "another pulse-engine is already measuring thread mapping");
+    // 첫 수집기의 세션은 그대로 살아서 창을 만든다 (플러시 1 초를 넘겨 기다린다).
+    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+    REQUIRE(first->drain().has_value());
+}

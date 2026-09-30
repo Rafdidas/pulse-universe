@@ -1,5 +1,6 @@
 #include "core/DataAggregator.h"
 
+#include <algorithm>
 #include <unordered_map>
 
 #include "core/MeasuredFlows.h"
@@ -132,9 +133,20 @@ SystemSnapshot DataAggregator::aggregate(const RawSample& sample) {
 
     // 7. 화면에 남은 그룹에 대해서만 흐름을 만든다. 실측 매핑이 실려 왔으면 그것을,
     // 아니면 코어 부하로 추정한다 (ETW 스펙 6절).
-    snapshot.flows = sample.thread_mapping.has_value()
-                         ? measuredFlows(snapshot.groups, *sample.thread_mapping, flow_config_)
-                         : flow_estimator_.estimate(snapshot.groups, snapshot.cores);
+    if (sample.thread_mapping.has_value()) {
+        snapshot.flows = measuredFlows(snapshot.groups, *sample.thread_mapping, flow_config_);
+        // ETW 의 코어 번호는 프로세서 그룹을 가로질러 이어지지만 코어 부하(PDH)는 그룹 0
+        // 만 본다. 64 개를 넘는 기계에서 cores[] 에 없는 코어로 가는 흐름은 그릴 곳이 없다.
+        // cores 가 비어 있으면(부하를 못 읽었다) 거르지 않는다.
+        if (!snapshot.cores.empty()) {
+            std::erase_if(snapshot.flows, [&](const Flow& f) {
+                return std::none_of(snapshot.cores.begin(), snapshot.cores.end(),
+                                    [&](const CoreLoad& c) { return c.id == f.core; });
+            });
+        }
+    } else {
+        snapshot.flows = flow_estimator_.estimate(snapshot.groups, snapshot.cores);
+    }
 
     return snapshot;
 }

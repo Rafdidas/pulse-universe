@@ -625,6 +625,21 @@ TEST_CASE("a sample without a thread mapping keeps estimating flows", "[aggregat
         REQUIRE(f.source == "estimated");
     }
 }
+
+TEST_CASE("measured flows to cores missing from the core list are dropped", "[aggregate][measured]") {
+    // ETW 코어 번호는 프로세서 그룹을 넘어 이어지지만 코어 부하는 그룹 0 만 본다.
+    DataAggregator aggregator(2);
+    RawSample sample = makeSample({makeProcess(10, 0, "a.exe", 1000, 100ull * 1024 * 1024)}, 1000);
+    RawThreadMapping mapping;
+    mapping.window_seconds = 1.0;
+    mapping.run_times = {RawRunTime{10, 1, 0.5}, RawRunTime{10, 70, 0.4}};
+    sample.thread_mapping = mapping;
+
+    const auto snap = aggregator.aggregate(sample);
+
+    REQUIRE(snap.flows.size() == 1);
+    REQUIRE(snap.flows[0].core == 1);
+}
 ```
 
 - [ ] **Step 3: CMake 에 등록**
@@ -787,6 +802,7 @@ private:
 ```cpp
 #include "core/DataAggregator.h"
 
+#include <algorithm>
 #include <unordered_map>
 
 #include "core/MeasuredFlows.h"
@@ -919,9 +935,20 @@ SystemSnapshot DataAggregator::aggregate(const RawSample& sample) {
 
     // 7. 화면에 남은 그룹에 대해서만 흐름을 만든다. 실측 매핑이 실려 왔으면 그것을,
     // 아니면 코어 부하로 추정한다 (ETW 스펙 6절).
-    snapshot.flows = sample.thread_mapping.has_value()
-                         ? measuredFlows(snapshot.groups, *sample.thread_mapping, flow_config_)
-                         : flow_estimator_.estimate(snapshot.groups, snapshot.cores);
+    if (sample.thread_mapping.has_value()) {
+        snapshot.flows = measuredFlows(snapshot.groups, *sample.thread_mapping, flow_config_);
+        // ETW 의 코어 번호는 프로세서 그룹을 가로질러 이어지지만 코어 부하(PDH)는 그룹 0
+        // 만 본다. 64 개를 넘는 기계에서 cores[] 에 없는 코어로 가는 흐름은 그릴 곳이 없다.
+        // cores 가 비어 있으면(부하를 못 읽었다) 거르지 않는다.
+        if (!snapshot.cores.empty()) {
+            std::erase_if(snapshot.flows, [&](const Flow& f) {
+                return std::none_of(snapshot.cores.begin(), snapshot.cores.end(),
+                                    [&](const CoreLoad& c) { return c.id == f.core; });
+            });
+        }
+    } else {
+        snapshot.flows = flow_estimator_.estimate(snapshot.groups, snapshot.cores);
+    }
 
     return snapshot;
 }
@@ -1028,12 +1055,12 @@ struct SystemSnapshot {
 - [ ] **Step 10: 통과 확인 (GREEN)**
 
 Run: `cmake --build --preset default && ./build/tests/Debug/pulse-tests.exe "[measured]"`
-Expected: 빌드 경고 0, `All tests passed (... in 8 test cases)` (measured 6 + aggregate 2).
+Expected: 빌드 경고 0, `All tests passed (... in 9 test cases)` (measured 6 + aggregate 3).
 
 - [ ] **Step 11: 전체 확인**
 
 Run: `./build/tests/Debug/pulse-tests.exe`
-Expected: `test cases: 191 | 191 passed`.
+Expected: `test cases: 192 | 192 passed`.
 
 - [ ] **Step 12: 커밋**
 
@@ -1313,7 +1340,7 @@ Expected: 빌드 경고 0, 모두 통과.
 - [ ] **Step 6: 전체 확인**
 
 Run: `./build/tests/Debug/pulse-tests.exe`
-Expected: `test cases: 194 | 194 passed`.
+Expected: `test cases: 195 | 195 passed`.
 
 - [ ] **Step 7: 커밋**
 
@@ -1335,12 +1362,12 @@ git commit -m "feat(engine): add --mapping auto|estimated|measured"
 **Interfaces:**
 - Consumes: Task 1 의 `RunTimeTable`, `RawThreadMapping`, `HostInfo::thread_mapping`. Task 3 의 `Mapping`, `Options::mapping`. 기존 `HelloInfo::thread_mapping` (`network/Serializer.h`).
 - Produces:
-  - `class EtwSchedulerCollector { static constexpr const wchar_t* kSessionName = L"PulseUniverse-Sched"; static std::unique_ptr<EtwSchedulerCollector> start(std::string& error); std::optional<RawThreadMapping> drain(); }` — 권한이 없으면 `start` 가 nullptr, `error == "ETW kernel events need administrator rights"`.
+  - `class EtwSchedulerCollector { static constexpr const wchar_t* kSessionName = L"PulseUniverse-Sched"; static std::unique_ptr<EtwSchedulerCollector> start(std::string& error); static void stopSessionByName(); std::optional<RawThreadMapping> drain(); }` — 권한이 없으면 `start` 가 nullptr, `error == "ETW kernel events need administrator rights"`. 살아 있는 다른 엔진이 세션을 쓰면(이름 붙은 뮤텍스) 멈추지 않고 `error == "another pulse-engine is already measuring thread mapping"`. `drain()` 은 창 길이가 0 이면 nullopt.
   - `explicit WindowsSystemReader(bool measure_threads = false)`, `bool measuringThreads() const`, `const std::string& mappingError() const`. `hostInfo().thread_mapping` 은 수집기가 있으면 `"measured"`.
-  - `main`: `--mapping` 이 `estimated` 가 아니면 수집기를 시도하고 stderr 에 한 줄. `measured` 인데 실패하면 종료 코드 1.
+  - `main`: `--mapping` 이 `estimated` 가 아니면 수집기를 시도하고 stderr 에 한 줄. `measured` 인데 실패하면 종료 코드 1. 수집기가 돌면 콘솔 핸들러가 Ctrl+C 때 세션을 이름으로 멈춘다.
   - hello 의 `capabilities.thread_mapping` = `HostInfo::thread_mapping`.
 
-구현자의 셸은 관리자 권한이 아니다. `test_etw_collector.cpp` 의 두 테스트는 `SKIP` 으로 끝나야 정상이다 (`ETW collector unavailable: ETW kernel events need administrator rights`). 관리자 권한 확인은 컨트롤러가 한다.
+구현자의 셸은 관리자 권한이 아니다. `test_etw_collector.cpp` 의 세 테스트는 `SKIP` 으로 끝나야 정상이다 (`ETW collector unavailable: ETW kernel events need administrator rights`). 관리자 권한 확인은 컨트롤러가 한다.
 
 - [ ] **Step 1: `engine/src/platform/windows/EtwSchedulerCollector.h`**
 
@@ -1370,15 +1397,20 @@ public:
     static constexpr const wchar_t* kSessionName = L"PulseUniverse-Sched";
 
     // 세션을 열고 소비 스레드를 띄운다. 실패하면 error 에 이유를 담고 nullptr.
+    // 다른 pulse-engine 이 이미 같은 세션을 쓰고 있으면 그 세션을 멈추지 않고 실패한다.
     static std::unique_ptr<EtwSchedulerCollector> start(std::string& error);
+
+    // 이름으로 세션을 멈춘다. 프로세스가 콘솔 종료 신호(Ctrl+C, 창 닫기)로 죽을 때
+    // 소멸자가 돌지 못하므로 main 의 콘솔 핸들러가 부른다. 세션이 없어도 안전하다.
+    static void stopSessionByName();
 
     ~EtwSchedulerCollector();
 
     EtwSchedulerCollector(const EtwSchedulerCollector&) = delete;
     EtwSchedulerCollector& operator=(const EtwSchedulerCollector&) = delete;
 
-    // 소비 스레드가 살아 있으면 창을 닫아 돌려준다. 멈췄으면 nullopt — 호출자는
-    // 추정으로 돌아간다.
+    // 소비 스레드가 살아 있고 창이 길이를 가지면 닫아서 돌려준다. 멈췄거나 아직 창이
+    // 없으면(기동 직후, 이벤트가 지연 안에 있다) nullopt — 호출자는 이번 표본을 추정한다.
     std::optional<RawThreadMapping> drain();
 
     // 이벤트 콜백. ProcessTrace 스레드에서 불린다. 외부에서 부르지 않는다.
@@ -1392,14 +1424,17 @@ private:
     // 세션의 유실 이벤트 수가 늘었으면 stderr 에 경고한다 (10초에 한 번).
     void warnIfEventsLost();
 
+    void* owner_mutex_ = nullptr;  // 세션 소유권. 프로세스가 죽으면 커널이 닫아 준다.
     uint64_t session_ = 0;   // TRACEHANDLE (StartTrace)
     uint64_t consumer_ = 0;  // TRACEHANDLE (OpenTrace)
     std::vector<unsigned char> properties_;  // EVENT_TRACE_PROPERTIES + 이름
     std::thread thread_;
     std::atomic<bool> running_{false};
+    std::atomic<bool> stopping_{false};
     std::mutex mutex_;
     RunTimeTable table_;
     unsigned long events_lost_ = 0;
+    unsigned long buffers_lost_ = 0;
     int64_t last_warning_ms_ = 0;
 };
 
@@ -1450,6 +1485,9 @@ constexpr ULONG kFlushSeconds = 1;
 // ProcessTrace 는 PROCESS_TRACE_MODE_RAW_TIMESTAMP 없이 열면 시각을 FILETIME(100ns)
 // 으로 바꿔 준다.
 constexpr double kTicksPerSecond = 1e7;
+
+// 세션 소유권을 나타내는 이름 붙은 뮤텍스. 살아 있는 다른 엔진의 세션을 멈추지 않게 한다.
+constexpr const wchar_t* kOwnerMutexName = L"Global\\PulseUniverse-Sched-Owner";
 
 // 유실 경고를 이보다 자주 찍지 않는다.
 constexpr int64_t kLostWarningIntervalMs = 10000;
@@ -1531,12 +1569,31 @@ void WINAPI onEventRecord(PEVENT_RECORD record) {
 EtwSchedulerCollector::EtwSchedulerCollector()
     : properties_(makeProperties()), table_(kTicksPerSecond) {}
 
+void EtwSchedulerCollector::stopSessionByName() {
+    std::vector<unsigned char> props = makeProperties();
+    ::ControlTraceW(0, kSessionName, asProperties(props), EVENT_TRACE_CONTROL_STOP);
+}
+
 std::unique_ptr<EtwSchedulerCollector> EtwSchedulerCollector::start(std::string& error) {
     std::unique_ptr<EtwSchedulerCollector> collector(new EtwSchedulerCollector());
 
-    // 엔진이 강제 종료되면 세션이 커널에 남는다. 같은 이름으로 다시 열기 전에 멈춘다.
-    std::vector<unsigned char> stale = makeProperties();
-    ::ControlTraceW(0, kSessionName, asProperties(stale), EVENT_TRACE_CONTROL_STOP);
+    // 살아 있는 다른 엔진이 이 세션을 쓰고 있으면 건드리지 않는다. 뮤텍스는 그 프로세스가
+    // 죽으면 커널이 없애므로, 이미 있는데 소유자가 없는 경우는 없다.
+    HANDLE owner = ::CreateMutexW(nullptr, FALSE, kOwnerMutexName);
+    if (owner == nullptr) {
+        error = "CreateMutex failed with error " + std::to_string(::GetLastError());
+        return nullptr;
+    }
+    if (::GetLastError() == ERROR_ALREADY_EXISTS) {
+        ::CloseHandle(owner);
+        error = "another pulse-engine is already measuring thread mapping";
+        return nullptr;
+    }
+    collector->owner_mutex_ = owner;
+
+    // 소유자가 없는 세션은 엔진이 강제 종료되며 커널에 남은 것이다. 같은 이름으로 다시
+    // 열기 전에 멈춘다.
+    stopSessionByName();
 
     TRACEHANDLE session = 0;
     const ULONG started =
@@ -1566,13 +1623,19 @@ std::unique_ptr<EtwSchedulerCollector> EtwSchedulerCollector::start(std::string&
     collector->thread_ = std::thread([self] {
         TRACEHANDLE handle = self->consumer_;
         // 세션이 멈추거나 CloseTrace 가 불릴 때까지 돌아오지 않는다.
-        ::ProcessTrace(&handle, 1, nullptr, nullptr);
+        const ULONG result = ::ProcessTrace(&handle, 1, nullptr, nullptr);
         self->running_ = false;
+        if (!self->stopping_) {
+            // 엔진이 끝나는 중이 아닌데 멈췄다. 이후 표본은 추정이 된다.
+            std::fprintf(stderr, "thread mapping: ETW stopped unexpectedly (error %lu), using the estimate\n",
+                         static_cast<unsigned long>(result));
+        }
     });
     return collector;
 }
 
 EtwSchedulerCollector::~EtwSchedulerCollector() {
+    stopping_ = true;
     if (session_ != 0) {
         ::ControlTraceW(session_, nullptr, asProperties(properties_), EVENT_TRACE_CONTROL_STOP);
     }
@@ -1581,6 +1644,9 @@ EtwSchedulerCollector::~EtwSchedulerCollector() {
     }
     if (thread_.joinable()) {
         thread_.join();
+    }
+    if (owner_mutex_ != nullptr) {
+        ::CloseHandle(static_cast<HANDLE>(owner_mutex_));
     }
 }
 
@@ -1605,7 +1671,11 @@ std::optional<RawThreadMapping> EtwSchedulerCollector::drain() {
     }
     warnIfEventsLost();
     std::lock_guard<std::mutex> lock(mutex_);
-    return table_.drain();
+    RawThreadMapping mapping = table_.drain();
+    if (mapping.window_seconds <= 0.0) {
+        return std::nullopt;
+    }
+    return mapping;
 }
 
 void EtwSchedulerCollector::warnIfEventsLost() {
@@ -1614,16 +1684,21 @@ void EtwSchedulerCollector::warnIfEventsLost() {
         ERROR_SUCCESS) {
         return;
     }
-    const unsigned long lost = asProperties(query)->EventsLost;
-    if (lost <= events_lost_) {
+    // EventsLost 는 커널이 버퍼를 못 채워 잃은 이벤트, RealTimeBuffersLost 는 소비자가
+    // 늦어 잃은 버퍼다. 둘 다 그 구간의 실행 시간을 잘못 귀속시킨다.
+    const unsigned long events = asProperties(query)->EventsLost;
+    const unsigned long buffers = asProperties(query)->RealTimeBuffersLost;
+    if (events <= events_lost_ && buffers <= buffers_lost_) {
         return;
     }
     const int64_t now = steadyMs();
     if (last_warning_ms_ != 0 && now - last_warning_ms_ < kLostWarningIntervalMs) {
         return;
     }
-    std::fprintf(stderr, "thread mapping: ETW dropped %lu events so far\n", lost);
-    events_lost_ = lost;
+    std::fprintf(stderr, "thread mapping: ETW dropped %lu events and %lu buffers so far\n", events,
+                 buffers);
+    events_lost_ = events;
+    buffers_lost_ = buffers;
     last_warning_ms_ = now;
 }
 
@@ -2017,6 +2092,8 @@ RawSample WindowsSystemReader::read() {
 - [ ] **Step 5: `engine/src/main.cpp` 전체 교체**
 
 ```cpp
+#include <windows.h>
+
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -2027,9 +2104,19 @@ RawSample WindowsSystemReader::read() {
 #include "cli/Options.h"
 #include "cli/TableFormatter.h"
 #include "network/Serializer.h"
+#include "platform/windows/EtwSchedulerCollector.h"
 #include "platform/windows/WindowsSystemReader.h"
 
 namespace {
+
+// Ctrl+C·창 닫기·로그오프로 죽으면 소멸자가 돌지 못해 커널 세션이 남는다. 계속 이벤트를
+// 쌓는 세션을 두지 않도록 여기서 이름으로 멈춘다. FALSE 를 돌려 기본 종료 동작은 그대로 둔다.
+// --serve 의 asio signal_set 이 Ctrl+C 를 먼저 가로채면 이 핸들러는 불리지 않고, 그
+// 경로는 정상 종료하며 소멸자가 세션을 멈춘다.
+BOOL WINAPI onConsoleControl(DWORD) {
+    pulse::EtwSchedulerCollector::stopSessionByName();
+    return FALSE;
+}
 
 int runDump(pulse::ISystemReader& reader, const pulse::Options& options) {
     pulse::EngineLoopConfig cfg;
@@ -2132,6 +2219,7 @@ int main(int argc, char** argv) {
     pulse::WindowsSystemReader reader(want_measured);
     if (want_measured) {
         if (reader.measuringThreads()) {
+            ::SetConsoleCtrlHandler(onConsoleControl, TRUE);
             std::fprintf(stderr, "thread mapping: measured (ETW)\n");
         } else if (options.mapping == pulse::Mapping::Measured) {
             std::fprintf(stderr, "thread mapping: cannot measure - %s\n",
@@ -2369,6 +2457,23 @@ TEST_CASE("the ETW session is gone after the collector is destroyed", "[etw]") {
     std::unique_ptr<EtwSchedulerCollector> again = EtwSchedulerCollector::start(error);
     REQUIRE(again != nullptr);
 }
+
+TEST_CASE("a second collector does not take over a live session", "[etw]") {
+    std::string error;
+    std::unique_ptr<EtwSchedulerCollector> first = EtwSchedulerCollector::start(error);
+    if (first == nullptr) {
+        SKIP("ETW collector unavailable: " + error);
+    }
+
+    std::string second_error;
+    std::unique_ptr<EtwSchedulerCollector> second = EtwSchedulerCollector::start(second_error);
+
+    REQUIRE(second == nullptr);
+    REQUIRE(second_error == "another pulse-engine is already measuring thread mapping");
+    // 첫 수집기의 세션은 그대로 살아서 창을 만든다 (플러시 1 초를 넘겨 기다린다).
+    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+    REQUIRE(first->drain().has_value());
+}
 ```
 
 - [ ] **Step 9: CMake 에 등록**
@@ -2410,7 +2515,7 @@ TEST_CASE("the ETW session is gone after the collector is destroyed", "[etw]") {
 - [ ] **Step 11: 빌드와 전체 확인**
 
 Run: `cmake --build --preset default && ./build/tests/Debug/pulse-tests.exe`
-Expected: 빌드 경고 0, `test cases: 196 | 194 passed | 2 skipped` (두 SKIP 은 `[etw]`).
+Expected: 빌드 경고 0, `test cases: 198 | 195 passed | 3 skipped` (세 SKIP 은 `[etw]`).
 
 Run: `./build/Debug/pulse-engine.exe --json --mapping estimated > /dev/null; echo $?`
 Expected: `0`, stderr 에 아무것도 없다.
@@ -2436,10 +2541,10 @@ git commit -m "feat(engine): measure thread-to-core mapping with an ETW schedule
 
 ## 완료 조건 (컨트롤러가 확인)
 
-- [ ] 빌드 경고 0, `pulse-tests` 196 (권한 없이 194 통과 + `[etw]` 2 SKIP).
+- [ ] 빌드 경고 0, `pulse-tests` 198 (권한 없이 195 통과 + `[etw]` 3 SKIP).
 - [ ] `engine/src/core/` 에 Win32 헤더가 없다.
 - [ ] 관리자 권한 (UAC):
-  - `pulse-tests "[etw]"` 2개 통과.
+  - `pulse-tests "[etw]"` 3개 통과.
   - `--json --mapping measured`: flows 가 모두 `source: "measured"`, 그룹마다 코어가 다르다.
   - `--serve --allow-origin http://localhost:5173` + dev 서버: hello `capabilities.thread_mapping == "measured"`, 배지 `elevated`, 스냅샷 flows 가 `measured`.
   - Release 엔진 CPU·작업 집합 (시제품: measured 17~22 ms/s, 29 MB), 버퍼 유실 0.

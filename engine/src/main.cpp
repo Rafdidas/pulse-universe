@@ -1,3 +1,5 @@
+#include <windows.h>
+
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -8,9 +10,19 @@
 #include "cli/Options.h"
 #include "cli/TableFormatter.h"
 #include "network/Serializer.h"
+#include "platform/windows/EtwSchedulerCollector.h"
 #include "platform/windows/WindowsSystemReader.h"
 
 namespace {
+
+// Ctrl+C·창 닫기·로그오프로 죽으면 소멸자가 돌지 못해 커널 세션이 남는다. 계속 이벤트를
+// 쌓는 세션을 두지 않도록 여기서 이름으로 멈춘다. FALSE 를 돌려 기본 종료 동작은 그대로 둔다.
+// --serve 의 asio signal_set 이 Ctrl+C 를 먼저 가로채면 이 핸들러는 불리지 않고, 그
+// 경로는 정상 종료하며 소멸자가 세션을 멈춘다.
+BOOL WINAPI onConsoleControl(DWORD) {
+    pulse::EtwSchedulerCollector::stopSessionByName();
+    return FALSE;
+}
 
 int runDump(pulse::ISystemReader& reader, const pulse::Options& options) {
     pulse::EngineLoopConfig cfg;
@@ -113,6 +125,7 @@ int main(int argc, char** argv) {
     pulse::WindowsSystemReader reader(want_measured);
     if (want_measured) {
         if (reader.measuringThreads()) {
+            ::SetConsoleCtrlHandler(onConsoleControl, TRUE);
             std::fprintf(stderr, "thread mapping: measured (ETW)\n");
         } else if (options.mapping == pulse::Mapping::Measured) {
             std::fprintf(stderr, "thread mapping: cannot measure - %s\n",
