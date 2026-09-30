@@ -17,6 +17,7 @@ add_library(pulse_core
   src/core/ProcessFilter.cpp
   src/core/LifecycleTracker.cpp
   src/core/FlowEstimator.cpp
+  src/core/RunTimeTable.cpp
   src/core/DataAggregator.cpp
   src/app/EngineLoop.cpp
   src/app/ServeApp.cpp

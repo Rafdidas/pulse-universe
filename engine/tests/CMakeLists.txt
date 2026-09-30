@@ -7,6 +7,7 @@ add_executable(pulse-tests
   test_process_filter.cpp
   test_lifecycle_tracker.cpp
   test_flow_estimator.cpp
+  test_run_time_table.cpp
   test_aggregator.cpp
   test_windows_reader.cpp
   test_table_formatter.cpp

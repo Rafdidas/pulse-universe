@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,22 @@ struct RawMemory {
 struct HostInfo {
     std::string os;
     bool elevated = false;
+    // hello 의 capabilities.thread_mapping. 엔진이 시작할 때의 실측 수집기 상태다
+    // (ETW 스펙 8절). 수집기가 없으면 "estimated".
+    std::string thread_mapping = "estimated";
+};
+
+// 한 창 동안 한 프로세스가 한 코어에서 돈 시간.
+struct RawRunTime {
+    uint32_t pid = 0;
+    uint32_t core = 0;
+    double seconds = 0.0;
+};
+
+// 실측 스레드-코어 매핑 한 창 (ETW 스펙 4절). 창 길이는 이벤트 시각 기준이다.
+struct RawThreadMapping {
+    double window_seconds = 0.0;
+    std::vector<RawRunTime> run_times;
 };
 
 struct RawSample {
@@ -40,6 +57,8 @@ struct RawSample {
     std::vector<RawCore> cores;
     RawMemory memory;
     uint64_t timestamp_ms = 0;
+    // 실측 수집기가 살아 있으면 채운다. 없으면 흐름을 추정한다 (계약서 6.2절).
+    std::optional<RawThreadMapping> thread_mapping;
 };
 
 }  // namespace pulse
