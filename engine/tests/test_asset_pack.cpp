@@ -4,6 +4,7 @@
 
 #include "network/AssetPack.h"
 #include "pak_builder.h"
+#include "platform/windows/EmbeddedAssets.h"
 
 using pulse_test::makePak;
 
@@ -64,8 +65,20 @@ TEST_CASE("AssetPack rejects malformed input", "[assetpack]") {
         }
         CHECK_FALSE(pulse::AssetPack::parse(bad).has_value());
     }
+    SECTION("offset alone past the end") {
+        std::string bad = good;
+        // offset 은 path_len(2) "/a"(2) 뒤, 12 + 2 + 2 = 16 바이트 위치의 8 바이트다. 최상위 바이트만 켠다.
+        // size 는 그대로 5 이므로 offset 만 범위를 벗어난다.
+        bad[8 + 4 + 2 + 2 + 7] = static_cast<char>(0x7f);
+        CHECK_FALSE(pulse::AssetPack::parse(bad).has_value());
+    }
     SECTION("paths out of order or duplicated") {
         CHECK_FALSE(pulse::AssetPack::parse(makePak({{"/b", "1"}, {"/a", "2"}})).has_value());
         CHECK_FALSE(pulse::AssetPack::parse(makePak({{"/a", "1"}, {"/a", "2"}})).has_value());
     }
+}
+
+TEST_CASE("the test executable embeds no frontend", "[assetpack]") {
+    // 리소스는 pulse-engine.exe 에만 링크된다. 테스트 exe 에서는 없어야 한다 (D78).
+    CHECK(pulse::embeddedAssetPack() == nullptr);
 }

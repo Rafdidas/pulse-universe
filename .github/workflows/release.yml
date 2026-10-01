@@ -55,7 +55,7 @@ jobs:
         working-directory: web
         run: npm run lint
 
-      - name: Build the zip
+      - name: Build the exe and the zip
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')

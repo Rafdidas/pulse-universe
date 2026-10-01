@@ -57,6 +57,9 @@ if(PULSE_WEB_PAK)
   configure_file("${PULSE_WEB_PAK}" "${CMAKE_CURRENT_BINARY_DIR}/web.pak" COPYONLY)
   configure_file(resources/web.rc.in "${CMAKE_CURRENT_BINARY_DIR}/web.rc" COPYONLY)
   list(APPEND PULSE_ENGINE_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/web.rc")
+  # 리소스 재빌드는 pak 이 바뀌면 configure_file 이 다시 돌고(재생성 의존성) MSBuild 가 갱신된
+  # web.pak 입력을 추적해서 일어난다. OBJECT_DEPENDS 는 Visual Studio 생성기에서는 무시되고
+  # Ninja·Makefile 생성기를 위한 것이다.
   set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/web.rc"
     PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/web.pak")
 endif()

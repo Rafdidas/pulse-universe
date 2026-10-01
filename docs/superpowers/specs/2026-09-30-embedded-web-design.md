@@ -40,7 +40,7 @@ blobs      각 파일의 원본 바이트
 - `network/AssetPack.{h,cpp}` (새 파일, 플랫폼 무관): `AssetPack::parse(std::string_view bytes)` → `std::optional<AssetPack>`, `find(path)` → `std::optional<std::string_view>`. 바이트를 복사하지 않는다.
 - `platform/windows/EmbeddedAssets.{h,cpp}`: `const AssetPack* embeddedAssetPack()`. `FindResourceW` 로 리소스 `WEBPAK`(RCDATA) 를 찾아 `LoadResource`/`LockResource` 로 뷰를 얻고 `parse` 한다. 리소스가 없거나 parse 가 실패하면 `nullptr`. 결과는 프로세스 수명 동안 캐시한다.
 - `network/ServerConfig`: `const AssetPack* assets = nullptr;` (소유하지 않는다).
-- `network/WebSocketServer::serveStatic`: `assets != nullptr` 이면 pak 에서 찾는다. 그렇지 않으면 기존 폴더 경로를 그대로 쓴다. pak 조회는 요청 대상에서 쿼리/프래그먼트를 떼고, `resolveWebPath` 와 같은 형태 검사(선행 `/`, 역슬래시·`..` 세그먼트·`:` 거부)를 거쳐 403/폴백을 정한다. 없는 경로는 `/index.html` 로 SPA 폴백, index 가 없으면 404. Content-Type 은 기존 `mimeTypeFor`, index 의 캐시 방지 헤더도 그대로다.
+- `network/WebSocketServer::serveStatic`: `assets != nullptr` 이면 pak 에서 찾는다. 그렇지 않으면 기존 폴더 경로를 그대로 쓴다. pak 조회는 요청 대상에서 쿼리/프래그먼트를 떼고, `resolveWebPath` 와 같은 형태 검사(선행 `/` 필수, 역슬래시와 `..` 세그먼트는 403)를 거쳐 403/폴백을 정한다. pak 모드에서는 `..` 가 어디에 있든 403 이다 (경로를 정규화하는 폴더 모드보다 엄격하다). `:` 가 든 경로는 대체 데이터 스트림 구문이므로 없는 파일처럼 `/index.html` 로 폴백한다. 없는 경로는 `/index.html` 로 SPA 폴백, index 가 없으면 404. Content-Type 은 기존 `mimeTypeFor`, index 의 캐시 방지 헤더도 그대로다.
 - `cli/Options`: `bool use_embedded_web = false;`. `applyDefaultLaunch(Options&, web_root, web_root_exists, has_embedded)` — 폴더가 있으면 지금처럼, 폴더가 없고 `has_embedded` 이면 `mode=Serve`, `use_embedded_web=true`, `web_root` 비움. 둘 다 없으면 `false`(사용법 출력). 사용법 문구에 내장본 설명을 한 줄 더한다.
 - `main.cpp`: 인자 없는 실행에서 `embeddedAssetPack() != nullptr` 를 `has_embedded` 로 넘기고, `use_embedded_web` 이면 `cfg.server.assets` 를 채운다. 브라우저 열기·실패 대화상자는 지금 경로를 그대로 쓴다.
 - `engine/CMakeLists.txt`: `PULSE_WEB_PAK`(경로, 기본 빈 값). 값이 있으면 `resources/web.rc.in` 을 `configure_file` 로 바꾸어 `pulse-engine` 타깃에만 소스로 추가한다 (`pulse_core`·테스트에는 넣지 않는다). `web.rc.in`: `WEBPAK RCDATA "@PULSE_WEB_PAK@"`.
@@ -71,7 +71,7 @@ blobs      각 파일의 원본 바이트
 ## 8. 테스트
 
 - `AssetPack`: 정상 pak 의 조회, 빈 pak, magic 불일치, count 가 실제보다 큼, offset+size 초과, 경로 중복 없음 확인, 잘린 입력, 멀티바이트(UTF-8) 경로.
-- `serveStatic` (pak 모드): `/` → index, 자산 경로 → 그 바이트와 Content-Type, 없는 경로 → index 폴백, `/../x`·`\`·`:` → 403, 쿼리스트링 무시. 기존 폴더 모드 테스트는 변경 없이 통과해야 한다.
+- `serveStatic` (pak 모드): `/` → index, 자산 경로 → 그 바이트와 Content-Type, 없는 경로 → index 폴백, `/../x`·`\` → 403, `:` 가 든 경로(`/app.js:stream`)는 없는 파일처럼 index 폴백, 쿼리스트링 무시. 기존 폴더 모드 테스트는 변경 없이 통과해야 한다.
 - `applyDefaultLaunch`: 폴더 있음/없음 × 내장 있음/없음 네 조합. 기존 세 테스트는 새 인자로 갱신한다.
 - `--embedded-web` 파싱: 단독, `--web-root` 와 동시 사용 오류, 없는 빌드에서의 동작(main 수준은 수동 확인).
 - 수동/스크립트: 패키징한 exe 만 빈 폴더에 두고 `--serve --embedded-web` 로 `/` 200, 자산 200, 존재하지 않는 경로 200(SPA). 더블클릭 실행은 브라우저가 열리는 것을 눈으로 확인한다.

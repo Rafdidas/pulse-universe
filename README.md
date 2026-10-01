@@ -19,7 +19,7 @@
 
 ## 다운로드해서 실행 (빌드 도구 필요 없음)
 
-[Releases](https://github.com/Rafdidas/pulse-universe/releases) 에서 `pulse-engine.exe` 하나만 받아 더블클릭하면 브라우저에 화면이 뜬다 (화면이 exe 안에 들어 있다). 더블클릭 실행용 `.bat` 과 안내 `README.txt` 가 필요하면 `pulse-universe-vX.Y.Z-win-x64.zip` 을 받아 푼다. 관리자 권한이 필요한 실측 흐름은 zip 의 `Start Pulse Universe (Admin).bat` 이다 (UAC 창에서 '아니오'를 누르면 아무것도 뜨지 않는다). exe 옆에 `web/` 폴더(빌드한 `web/dist`)를 두면 내장 화면 대신 그 폴더가 쓰인다. 서명되지 않은 프로그램이라 처음에는 Windows 가 경고할 수 있다 — zip 안의 `README.txt` 에 대처법이 있다. 아래는 소스에서 직접 빌드하는 방법이다.
+[Releases](https://github.com/Rafdidas/pulse-universe/releases) 에서 `pulse-engine.exe` 하나만 받아 더블클릭하면 브라우저에 화면이 뜬다 (화면이 exe 안에 들어 있다). 더블클릭 실행용 `.bat` 과 안내 `README.txt` 가 필요하면 `pulse-universe-vX.Y.Z-win-x64.zip` 을 받아 푼다. 관리자 권한이 필요한 실측 흐름은 zip 의 `Start Pulse Universe (Admin).bat` 이다 (UAC 창에서 '아니오'를 누르면 아무것도 뜨지 않는다). exe 옆에 `web/` 폴더(빌드한 `web/dist`)를 두면 내장 화면 대신 그 폴더가 쓰인다. 예전 버전 zip 을 푼 폴더에 새 exe 를 덮어쓸 때는 남아 있는 `web/` 폴더를 지운다. 서명되지 않은 프로그램이라 처음에는 Windows 가 경고할 수 있다 — zip 안의 `README.txt` 에 대처법이 있다. 아래는 소스에서 직접 빌드하는 방법이다.
 
 ## 가장 빠른 실행 (소스에서)
 

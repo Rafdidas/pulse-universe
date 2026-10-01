@@ -3,15 +3,18 @@
   Builds the Pulse Universe release zip (release design, D71).
 
 .DESCRIPTION
-  1. builds the web frontend, 2. builds the engine with a static MSVC runtime and static Boost,
-  3. checks that the exe has no Boost / Visual C++ runtime dependency, 4. assembles the zip and its
-  SHA256. Used locally and by the GitHub release workflow, so both give the same result.
+  1. builds the web frontend and packs it into web.pak, 2. builds the engine with a static MSVC
+  runtime and static Boost, the pak embedded in the exe, 3. checks that the exe has no Boost / Visual
+  C++ runtime dependency, 4. starts a copy of the exe alone and checks it serves the embedded
+  frontend, 5. assembles the zip and its SHA256, 6. writes the bare exe and its SHA256. Used locally
+  and by the GitHub release workflow, so both give the same result.
 
 .PARAMETER Version
   Text used in the file name, e.g. 0.1.0 (the workflow passes the tag without the leading v).
 
 .PARAMETER OutDir
-  Where the zip and the .sha256 are written. Default: dist-release under the repository root.
+  Where the zip, the bare pulse-engine.exe and their two .sha256 files are written. Default:
+  dist-release under the repository root.
 
 .PARAMETER SkipNpmCi
   Skip "npm ci" (use the node_modules already there). Faster for local runs.
@@ -71,14 +74,18 @@ try {
 $webDist = Join-Path $root 'web\dist'
 if (-not (Test-Path (Join-Path $webDist 'index.html'))) { throw 'web/dist/index.html is missing' }
 
-# --- 2. engine (static runtime, static Boost) ----------------------------------------------
-# --- 1b. pack the frontend so the engine can embed it -------------------------------------
-New-Item -ItemType Directory -Force $OutDir | Out-Null
-$pak = Join-Path $OutDir 'web.pak'
-& (Join-Path $PSScriptRoot 'make-pak.ps1') -WebDist $webDist -Out $pak
-
+# --- 2. pack the frontend so the engine can embed it ---------------------------------------
+# The pak lives in a subfolder of the build folder (not in dist-release): CMake's cache keeps the
+# path, so the file must stay there for later "cmake --build" runs. A subfolder, because the engine's
+# CMakeLists copies it to <build>/web.pak.
 $engineDir = Join-Path $root 'engine'
 $buildDir = Join-Path $engineDir 'build-release'
+$pakDir = Join-Path $buildDir 'pak'
+New-Item -ItemType Directory -Force $pakDir | Out-Null
+$pak = Join-Path $pakDir 'web.pak'
+& (Join-Path $PSScriptRoot 'make-pak.ps1') -WebDist $webDist -Out $pak
+
+# --- 3. engine (static runtime, static Boost) ----------------------------------------------
 Invoke-Native 'cmake configure (x64-windows-static)' {
     cmake -S $engineDir -B $buildDir -G 'Visual Studio 17 2022' -A x64 `
         "-DCMAKE_TOOLCHAIN_FILE=$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" `
@@ -92,7 +99,7 @@ Invoke-Native 'cmake build (Release)' {
 $exe = Join-Path $buildDir 'Release\pulse-engine.exe'
 if (-not (Test-Path $exe)) { throw "engine exe missing: $exe" }
 
-# --- 3. the exe must not depend on Boost or the Visual C++ runtime -------------------------
+# --- 4. the exe must not depend on Boost or the Visual C++ runtime -------------------------
 $dumpbin = Find-Dumpbin
 $dependents = & $dumpbin /dependents $exe | Out-String
 if ($LASTEXITCODE -ne 0) { throw 'dumpbin failed' }
@@ -102,7 +109,45 @@ if ($bad.Count -gt 0) {
 }
 Write-Host '==> static link check passed'
 
-# --- 4. assemble ---------------------------------------------------------------------------
+# --- 5. the exe alone must serve the frontend ----------------------------------------------
+# Run before anything is written to the output folder, so a failed probe leaves no release files.
+# Copy the exe to an empty folder (no web/ next to it) and ask it for the embedded assets. The
+# no-argument launch would open a browser, so the script uses --serve --embedded-web instead.
+# "--mapping estimated" keeps the probe from starting ETW (no administrator rights needed).
+$probeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pulse-probe-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force $probeDir | Out-Null
+$listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
+$listener.Start()
+$port = $listener.LocalEndpoint.Port
+$listener.Stop()
+$probeExe = Join-Path $probeDir 'pulse-engine.exe'
+Copy-Item $exe $probeExe
+$probe = Start-Process -FilePath $probeExe `
+    -ArgumentList '--serve', '--embedded-web', '--port', $port, '--mapping', 'estimated' `
+    -WorkingDirectory $probeDir -WindowStyle Hidden -PassThru
+try {
+    $script = Get-ChildItem (Join-Path $webDist 'assets') -Filter '*.js' | Select-Object -First 1
+    $checks = @('/', "/assets/$($script.Name)", '/some/spa/route')
+    foreach ($path in $checks) {
+        $response = $null
+        for ($i = 0; $i -lt 50 -and $null -eq $response; $i++) {
+            if ($probe.HasExited) { throw "the probe exe exited early with code $($probe.ExitCode)" }
+            try { $response = Invoke-WebRequest "http://127.0.0.1:$port$path" -UseBasicParsing -TimeoutSec 2 }
+            catch { Start-Sleep -Milliseconds 200 }
+        }
+        if ($null -eq $response -or $response.StatusCode -ne 200) { throw "embedded web: GET $path did not return 200" }
+    }
+    $served = (Invoke-WebRequest "http://127.0.0.1:$port/assets/$($script.Name)" -UseBasicParsing).RawContentLength
+    if ($served -ne $script.Length) { throw "embedded $($script.Name) is $served bytes, expected $($script.Length)" }
+    Write-Host '==> embedded web check passed'
+} finally {
+    if (-not $probe.HasExited) { Stop-Process -Id $probe.Id -Force }
+    $probe.WaitForExit()
+    Remove-Item $probeDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# --- 6. assemble the zip -------------------------------------------------------------------
+New-Item -ItemType Directory -Force $OutDir | Out-Null
 $stageRoot = Join-Path $OutDir 'stage'
 $stage = Join-Path $stageRoot $name
 if (Test-Path $stageRoot) { Remove-Item $stageRoot -Recurse -Force }
@@ -135,43 +180,10 @@ $size = [math]::Round((Get-Item $zip).Length / 1MB, 2)
 Write-Host "==> $zip ($size MB)"
 Write-Host "==> sha256 $hash"
 
-# --- 5. the bare exe and its checksum -------------------------------------------------------
+# --- 7. the bare exe and its checksum -------------------------------------------------------
 $bareExe = Join-Path $OutDir 'pulse-engine.exe'
 Copy-Item $exe $bareExe -Force
 $exeHash = (Get-FileHash $bareExe -Algorithm SHA256).Hash.ToLower()
 "$exeHash  pulse-engine.exe" | Set-Content -Path "$bareExe.sha256" -Encoding ascii
 Write-Host "==> $bareExe ($([math]::Round((Get-Item $bareExe).Length / 1MB, 2)) MB)"
 Write-Host "==> sha256 $exeHash"
-Remove-Item $pak -Force
-
-# --- 6. the exe alone must serve the frontend ----------------------------------------------
-# Copy it to an empty folder (no web/ next to it) and ask it for the embedded assets. The
-# no-argument launch would open a browser, so the script uses --serve --embedded-web instead.
-$probeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pulse-probe-" + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Force $probeDir | Out-Null
-$listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
-$listener.Start()
-$port = $listener.LocalEndpoint.Port
-$listener.Stop()
-$probeExe = Join-Path $probeDir 'pulse-engine.exe'
-Copy-Item $bareExe $probeExe
-$probe = Start-Process -FilePath $probeExe -ArgumentList '--serve', '--embedded-web', '--port', $port `
-    -WorkingDirectory $probeDir -WindowStyle Hidden -PassThru
-try {
-    $script = Get-ChildItem (Join-Path $webDist 'assets') -Filter '*.js' | Select-Object -First 1
-    $checks = @('/', "/assets/$($script.Name)", '/some/spa/route')
-    foreach ($path in $checks) {
-        $response = $null
-        for ($i = 0; $i -lt 50 -and $null -eq $response; $i++) {
-            try { $response = Invoke-WebRequest "http://127.0.0.1:$port$path" -UseBasicParsing -TimeoutSec 2 }
-            catch { Start-Sleep -Milliseconds 200 }
-        }
-        if ($null -eq $response -or $response.StatusCode -ne 200) { throw "embedded web: GET $path did not return 200" }
-    }
-    $served = (Invoke-WebRequest "http://127.0.0.1:$port/assets/$($script.Name)" -UseBasicParsing).RawContentLength
-    if ($served -ne $script.Length) { throw "embedded $($script.Name) is $served bytes, expected $($script.Length)" }
-    Write-Host '==> embedded web check passed'
-} finally {
-    if (-not $probe.HasExited) { Stop-Process -Id $probe.Id -Force }
-    Remove-Item $probeDir -Recurse -Force -ErrorAction SilentlyContinue
-}

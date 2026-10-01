@@ -650,3 +650,22 @@ TEST_CASE("a non-GET request to embedded assets is rejected with 405", "[ws][pac
     REQUIRE(response.result() == http::status::method_not_allowed);
     REQUIRE(response[http::field::allow] == "GET");
 }
+
+TEST_CASE("an embedded path with a backslash is refused", "[ws][pack]") {
+    REQUIRE(packRequest(kPak, "/assets\\app.js").result() == http::status::forbidden);
+}
+
+TEST_CASE("an embedded asset is found with its query string stripped", "[ws][pack]") {
+    const auto response = packRequest(kPak, "/assets/app.js?v=1");
+
+    REQUIRE(response.result() == http::status::ok);
+    REQUIRE(response.body() == "console.log(1);");
+    REQUIRE(response[http::field::content_type] == "text/javascript");
+}
+
+TEST_CASE("an embedded path with a colon falls back to the index instead of 403", "[ws][pack]") {
+    const auto response = packRequest(kPak, "/assets/app.js:stream");
+
+    REQUIRE(response.result() == http::status::ok);
+    REQUIRE(response.body() == "<html>index</html>");
+}

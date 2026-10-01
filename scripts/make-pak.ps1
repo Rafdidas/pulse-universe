@@ -22,11 +22,14 @@ foreach ($file in Get-ChildItem -LiteralPath $root -Recurse -File) {
 }
 if ($byPath.Count -eq 0) { throw "no files under $root" }
 
-# Ascending ordinal order: the engine binary-searches the table and rejects anything else.
-[string[]]$paths = @($byPath.Keys)
-[Array]::Sort($paths, [System.StringComparer]::Ordinal)
-
+# Ascending UTF-8 byte order: the engine binary-searches the table with a byte comparison and rejects
+# anything else. (Ordinal string order is UTF-16 code units, which differs above U+FFFF.)
+# Hex strings of the UTF-8 bytes sort in byte order, so they serve as the sort keys.
 $utf8 = New-Object System.Text.UTF8Encoding($false)
+[string[]]$paths = @($byPath.Keys)
+[string[]]$sortKeys = @($paths | ForEach-Object { ($utf8.GetBytes($_) | ForEach-Object { $_.ToString('x2') }) -join '' })
+[Array]::Sort($sortKeys, $paths, [System.StringComparer]::Ordinal)
+
 $pathBytes = @{}
 $tableSize = 0
 foreach ($path in $paths) {
