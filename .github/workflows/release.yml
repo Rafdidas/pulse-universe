@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  # SignPath reads the job and downloads the uploaded exe through this token (only used when signing is on).
+  actions: read
 
 jobs:
   release:
@@ -55,11 +57,51 @@ jobs:
         working-directory: web
         run: npm run lint
 
-      - name: Build the exe and the zip
+      - name: Build the exe (not yet signed)
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
-          ./scripts/package.ps1 -Version $version -SkipNpmCi
+          ./scripts/package.ps1 -Version $version -SkipNpmCi -Phase Build
+
+      # The next two steps run only once the SignPath application is approved and the repository
+      # variable SIGNPATH_ORGANIZATION_ID is set (docs/signing-setup.md). Without it the release
+      # ships the unsigned exe, as before.
+      - name: Upload the unsigned exe
+        id: upload-unsigned
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-pulse-engine
+          path: dist-release/unsigned/pulse-engine.exe
+
+      - name: Sign the exe with SignPath
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+          organization-id: '${{ vars.SIGNPATH_ORGANIZATION_ID }}'
+          project-slug: '${{ vars.SIGNPATH_PROJECT_SLUG }}'
+          signing-policy-slug: '${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}'
+          artifact-configuration-slug: '${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}'
+          github-artifact-id: '${{ steps.upload-unsigned.outputs.artifact-id }}'
+          wait-for-completion: true
+          # Every release needs a manual approval in SignPath; the default wait is only 10 minutes.
+          wait-for-completion-timeout-in-seconds: 18000
+          output-artifact-directory: dist-release/signed
+
+      - name: Assemble the release files
+        shell: pwsh
+        env:
+          SIGNING_ENABLED: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          if ($env:SIGNING_ENABLED -ne '') {
+            $signed = @(Get-ChildItem dist-release/signed -Recurse -Filter pulse-engine.exe)
+            if ($signed.Count -ne 1) { throw "expected exactly one signed pulse-engine.exe, found $($signed.Count)" }
+            ./scripts/package.ps1 -Version $version -Phase Assemble -ExePath $signed[0].FullName -RequireSignature
+          } else {
+            ./scripts/package.ps1 -Version $version -Phase Assemble -ExePath dist-release/unsigned/pulse-engine.exe
+          }
 
       - name: Test the engine (the ETW tests skip without administrator rights)
         run: engine/build-release/tests/Release/pulse-tests.exe

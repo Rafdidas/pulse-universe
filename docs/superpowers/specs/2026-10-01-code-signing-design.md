@@ -1,7 +1,7 @@
 # 코드 서명 준비 설계
 
 - 작성일: 2026-10-01
-- 상태: 초안 (사용자 검토 대기, 시제품 확인 전)
+- 상태: 승인됨 (시제품 확인됨 — 11절)
 - 선행: 릴리스 zip, 웹 내장 exe (`v0.2.0`)
 - 범위: SignPath Foundation 의 오픈소스 무료 서명을 받을 수 있도록 저장소와 릴리스 파이프라인을 준비한다. 신청·승인·SignPath 쪽 설정은 저장소 소유자가 해야 하므로 범위 밖이고, 그 절차를 체크리스트로 남긴다. 다른 서명 서비스, 설치 프로그램, 서명 인증서 구매는 범위 밖이다.
 
@@ -67,7 +67,7 @@
 
 ## 6. SignPath 쪽 파일과 문서 (D85)
 
-- `signpath/artifact-configuration.xml`: SignPath 프로젝트의 아티팩트 설정에 붙여 넣을 원본. `upload-artifact` 가 파일을 zip 으로 감싸므로 `<zip-file>` 안의 `*.exe` 를 `<authenticode-sign/>` 한다 (네임스페이스 `http://signpath.io/artifact-configuration/2023-12`).
+- `signpath/artifact-configuration.xml`: SignPath 프로젝트의 아티팩트 설정에 붙여 넣을 원본. `upload-artifact` 가 파일을 zip 으로 감싸므로 `<zip-file>` 안의 `pulse-engine.exe` 를 `<authenticode-sign/>` 한다 (네임스페이스 `http://signpath.io/artifact-configuration/2023-12`).
 - `docs/signing-setup.md`: 소유자 체크리스트 — (1) `LICENSE`·README 정책이 올라간 것을 확인하고 signpath.org/apply 로 신청, (2) 승인 뒤 프로젝트·아티팩트 설정·`release-signing` 서명 정책(수동 승인 켬) 만들기, (3) 신뢰 빌드 시스템 `GitHub.com` 연결과 SignPath GitHub 앱 설치, (4) 저장소에 비밀 `SIGNPATH_API_TOKEN` 과 변수 네 개 추가, (5) 태그 푸시 후 SignPath 에서 승인, (6) 결과 exe 의 서명 확인. 두 서비스 계정에 다단계 인증을 켠다.
 - `README.md`: 새 절 "코드 서명 정책" — `Free code signing provided by SignPath.io, certificate by SignPath Foundation` 문구, 팀 역할(Committers·reviewers·approvers 모두 `Rafdidas`; 소유자가 실제에 맞게 고친다), 개인정보 문구(`This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.` — 이 엔진은 127.0.0.1 에서만 듣고 아무것도 보내지 않는다). 서명 승인 전에는 "신청 중"이라고 쓰지 않고 문구 위에 "서명은 SignPath Foundation 승인 뒤부터 적용된다" 를 덧붙인다.
 
@@ -102,3 +102,19 @@
 ## 10. 범위 밖
 
 SignPath 신청·승인·계정 설정, 서명 인증서 구매, 다른 서명 서비스(Azure Artifact Signing 등), 설치 프로그램·MSI 서명, 서명 타임스탬프 설정(서비스가 처리한다), 서명된 zip(zip 자체는 서명 대상이 아니다).
+
+## 11. 시제품 결과 (2026-10-01)
+
+버전 속성과 패키징 단계 분리를 실제 빌드로 확인했다. 워크플로·SignPath 설정·문서는 읽기로만 확인한다 (실제 서명은 승인 뒤).
+
+| 항목 | 결과 |
+|---|---|
+| `version.rc` 가 든 개발 exe | `ProductName` Pulse Universe, `FileVersion`/`ProductVersion` 0.0.0, `FileDescription` Pulse Universe engine, `OriginalFilename` pulse-engine.exe, `InternalName` pulse-engine |
+| `-DPULSE_VERSION=1.2.3` | 속성이 1.2.3 으로 바뀐다. `abc` 는 `PULSE_VERSION must look like 1.2.3, got: abc` 로 구성 실패 |
+| 릴리스 `-Version 0.3.0` | exe 속성 0.3.0 |
+| `All` 과 `Build`→`Assemble` | exe sha256 동일 (`584a57c3...`), zip 파일 목록 동일, 4 개 산출 파일 + `unsigned/` |
+| 음성 시험 | `-RequireSignature` 에 서명 없는 exe → `is not validly signed (status: NotSigned); refusing to publish it` (출력 폴더 생기지 않음). `-ExePath` 없음·없는 파일·`All` 에 `-ExePath`·`Build` 에 `-RequireSignature` 모두 실패 |
+| 프로브 | `Build` 에서 한 번, `Assemble` 에서 한 번 (총 `All` 은 두 번) 통과 |
+| 이후 `cmake --build engine/build-release` | 성공 |
+
+`Get-AuthenticodeSignature` 가 `Valid` 를 돌려주는 경로는 신뢰된 인증서가 있어야 해서 시험하지 못했다 (첫 서명 릴리스에서 확인). 시제품 파일은 스크래치패드 `signproto/` 에 있고 계획의 Task 1 코드가 이와 바이트 단위로 같다.

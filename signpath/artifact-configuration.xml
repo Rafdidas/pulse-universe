@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Paste this into the artifact configuration of the SignPath project (docs/signing-setup.md).
+     The workflow uploads pulse-engine.exe with actions/upload-artifact, which wraps it in a zip. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/2023-12">
+  <zip-file>
+    <file-references>
+      <file-reference path="pulse-engine.exe">
+        <authenticode-sign/>
+      </file-reference>
+    </file-references>
+  </zip-file>
+</artifact-configuration>
