@@ -209,6 +209,12 @@ int runServe(pulse::ISystemReader& reader, const pulse::Options& options, bool o
         if (traffic != nullptr) {
             ::SetConsoleCtrlHandler(onNetworkConsoleControl, TRUE);
             std::fprintf(stderr, "network traffic: measured (ETW)\n");
+            if (options.interval_ms < 300) {
+                std::fprintf(stderr,
+                             "network traffic: each cycle spends about 250 ms flushing ETW buffers, so the real "
+                             "period will be longer than --interval-ms %u\n",
+                             options.interval_ms);
+            }
             // 공급자를 켠 직후 잠시는 이벤트가 오지 않는다. 첫 창이 비지 않게 기다린 뒤 서버를 시작한다.
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
         } else if (options.mapping == pulse::Mapping::Measured) {

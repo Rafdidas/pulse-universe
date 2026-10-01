@@ -106,15 +106,15 @@ pulse-engine --serve [--port N] [--web-root DIR] [--iterations N]
 - 일부 프로세스의 메모리가 0 으로 나온다 (핸들을 열지 못한다). 화면 상단에 안내가 뜬다.
 - 그룹에서 코어로 가는 선이 추정이다.
 
-`--mapping` 은 스레드-코어 매핑의 출처를 정한다.
+`--mapping` 은 ETW 로 실측할지를 정한다. `--serve`·`--connections` 에서는 스레드-코어 매핑(`PulseUniverse-Sched` 세션)과 네트워크 트래픽 속도(`PulseUniverse-Net` 세션, Network Universe M11~M12)를 **함께** 정한다. 연결 목록은 어느 값이든 관리자 권한 없이 수집된다.
 
 | 값 | 동작 |
 |---|---|
 | `auto` (기본) | 관리자 권한이면 ETW 문맥 전환 이벤트로 실측하고, 아니면 추정으로 물러난다. 이유는 stderr 에 한 줄 남는다 |
 | `estimated` | 측정하지 않는다 |
-| `measured` | 실측할 수 없으면 종료 코드 1 로 끝난다 |
+| `measured` | 어느 한쪽이라도 실측할 수 없으면 종료 코드 1 로 끝난다 |
 
-실측은 전용 커널 로거 세션(`PulseUniverse-Sched`)을 연다. Release 빌드에서 엔진 전체가 코어 하나의 약 2%, 작업 집합 약 30 MB 를 쓴다 (추정만 할 때는 약 1.5%, 12 MB). Debug 빌드는 훨씬 무겁다 — 상시 사용은 Release 로 빌드한다 (`cmake --build build --config Release`). 정상 종료와 Ctrl+C 에서는 세션이 닫힌다. 엔진이 강제 종료되어 세션이 남았다면 다음 실행이 정리한다. 엔진을 둘 띄우면 나중 것은 추정으로 동작한다.
+실측은 전용 ETW 세션을 연다: 스레드 매핑은 커널 로거 세션(`PulseUniverse-Sched`), 트래픽은 일반 실시간 세션(`PulseUniverse-Net`, 최대 4 MB 버퍼)이다. 트래픽 세션은 속도를 구하려고 매 주기 버퍼를 강제로 흘려보내므로(약 250 ms) 주기를 300 ms 아래로 두면 실제 주기가 `--interval-ms` 보다 길어진다. Release 빌드에서 엔진 전체가 코어 하나의 약 2%, 작업 집합 약 30 MB 를 쓴다 (추정만 할 때는 약 1.5%, 12 MB). Debug 빌드는 훨씬 무겁다 — 상시 사용은 Release 로 빌드한다 (`cmake --build build --config Release`). 정상 종료와 Ctrl+C 에서는 세션이 닫힌다. 엔진이 강제 종료되어 세션이 남았다면 다음 실행이 정리한다. 엔진을 둘 띄우면 나중 것은 추정으로 동작한다.
 
 관리자 권한으로 띄우려면 "관리자 권한으로 실행" 한 터미널에서 같은 명령을 쓰면 된다. 화면 상단 배지에 `elevated` 가 뜨면 실측 중이다.
 

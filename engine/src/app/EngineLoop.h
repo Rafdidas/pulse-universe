@@ -58,6 +58,7 @@ private:
     SnapshotHandler handler_;
     DataAggregator aggregator_;
     NetworkSources network_;
+    std::string last_scan_error_;  // 직전에 stderr 로 알린 스캐너 오류
     std::atomic<bool> stop_requested_{false};
     std::string error_;
 };

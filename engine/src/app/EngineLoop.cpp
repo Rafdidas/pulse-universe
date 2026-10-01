@@ -52,8 +52,12 @@ void EngineLoop::run() {
 
             if (network_.scanner != nullptr) {
                 const ConnectionScan scan = network_.scanner->scan();
-                if (!scan.error.empty()) {
-                    std::fprintf(stderr, "connections: %s\n", scan.error.c_str());
+                // 같은 오류가 계속되면 한 번만 알린다 (초당 한 줄씩 쏟아내지 않는다).
+                if (scan.error != last_scan_error_) {
+                    last_scan_error_ = scan.error;
+                    if (!scan.error.empty()) {
+                        std::fprintf(stderr, "connections: %s\n", scan.error.c_str());
+                    }
                 }
                 std::unordered_map<uint32_t, std::string> names;
                 for (const RawProcess& process : sample.processes) {

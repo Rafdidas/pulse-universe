@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <random>
+#include <set>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -416,4 +418,81 @@ TEST_CASE("a scanner error does not stop the loop", "[loop][netsnapshot]") {
 
     CHECK(calls == 2);
     CHECK(loop.error().empty());
+}
+
+// ---------------------------------------------------------- review follow-ups
+
+TEST_CASE("one endpoint shared by two groups merges its ports and groups", "[netsnapshot]") {
+    const std::vector<ProcessGroup> groups = {group("chrome.exe:100", 100), group("git.exe:200", 200)};
+    const NetworkView view = viewOf({tcp(100, 1, "9.9.9.9", 443), tcp(200, 2, "9.9.9.9", 80), tcp(200, 3, "9.9.9.9", 443)});
+
+    const NetworkSnapshot snapshot = buildNetworkSnapshot(view, groups, false);
+
+    REQUIRE(snapshot.endpoints.size() == 1);
+    CHECK(snapshot.endpoints[0].connections == 3);
+    CHECK(snapshot.endpoints[0].ports == std::vector<uint16_t>{80, 443});
+    CHECK(snapshot.endpoints[0].groups == std::vector<std::string>{"chrome.exe:100", "git.exe:200"});
+}
+
+TEST_CASE("exactly at the limits nothing is cut, one past the limit cuts one", "[netsnapshot]") {
+    const std::vector<ProcessGroup> groups = {group("chrome.exe:100", 100)};
+    NetworkLimits limits;
+    limits.max_endpoints = 4;
+    limits.max_connections = 4;
+    std::vector<RawConnection> four;
+    for (int i = 0; i < 4; ++i) {
+        four.push_back(tcp(100, static_cast<uint16_t>(10 + i), "6.6.6." + std::to_string(i + 1), 443));
+    }
+
+    const NetworkSnapshot exact = buildNetworkSnapshot(viewOf(four), groups, false, limits);
+    CHECK(exact.endpoints.size() == 4);
+    CHECK(exact.connections.size() == 4);
+
+    four.push_back(tcp(100, 99, "6.6.6.5", 443));
+    const NetworkSnapshot over = buildNetworkSnapshot(viewOf(four), groups, false, limits);
+    CHECK(over.endpoints.size() == 4);
+    CHECK(over.connections.size() == 4);
+    CHECK(over.summary.endpoints == 5);
+}
+
+TEST_CASE("with no rates the connection cap keeps a connection for every endpoint first", "[netsnapshot]") {
+    // 그룹 key 가 정렬에서 뒤인 그룹의 연결이 몽땅 잘려 끝점만 남는 일이 없어야 한다.
+    const std::vector<ProcessGroup> groups = {group("a.exe:100", 100), group("z.exe:200", 200)};
+    std::vector<RawConnection> connections;
+    // a.exe 가 같은 끝점 5 개에 연결 3 개씩, z.exe 가 끝점 5 개에 하나씩 (끝점 이름이 겹치지 않는다).
+    for (int e = 0; e < 5; ++e) {
+        for (int k = 0; k < 3; ++k) {
+            connections.push_back(tcp(100, static_cast<uint16_t>(1000 + e * 10 + k), "1.1.1." + std::to_string(e + 1),
+                                      static_cast<uint16_t>(2000 + k)));
+        }
+        connections.push_back(tcp(200, static_cast<uint16_t>(3000 + e), "2.2.2." + std::to_string(e + 1), 443));
+    }
+    NetworkLimits limits;
+    limits.max_connections = 10;  // 끝점이 10 개이므로 끝점마다 하나씩이 정확히 들어간다
+
+    const NetworkSnapshot snapshot = buildNetworkSnapshot(viewOf(connections), groups, false, limits);
+
+    REQUIRE(snapshot.connections.size() == 10);
+    std::set<std::string> remotes;
+    for (const NetworkConnectionOut& c : snapshot.connections) {
+        remotes.insert(c.remote);
+    }
+    CHECK(remotes.size() == 10);
+    for (const NetworkEndpointOut& endpoint : snapshot.endpoints) {
+        CHECK(remotes.count(endpoint.ip) == 1);
+    }
+}
+
+TEST_CASE("a scanner that throws stops the loop with the error, it does not crash", "[loop][netsnapshot]") {
+    struct ThrowingScanner final : IConnectionScanner {
+        ConnectionScan scan() override { throw std::runtime_error("scanner exploded"); }
+    } scanner;
+    FakeSystemReader reader({sampleWithProcesses(1000)}, 4);
+    int calls = 0;
+
+    EngineLoop loop(reader, quickConfig(3), [&](const SystemSnapshot&) { ++calls; }, NetworkSources{&scanner, nullptr});
+    loop.run();
+
+    CHECK(calls == 0);
+    CHECK(loop.error() == "scanner exploded");
 }
