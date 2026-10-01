@@ -12,6 +12,7 @@
 #include "cli/Options.h"
 #include "cli/TableFormatter.h"
 #include "network/Serializer.h"
+#include "platform/windows/EmbeddedAssets.h"
 #include "platform/windows/EtwSchedulerCollector.h"
 #include "platform/windows/WindowsSystemReader.h"
 
@@ -116,8 +117,16 @@ int runServe(pulse::ISystemReader& reader, const pulse::Options& options, bool o
         }
         cfg.server.web_root = options.web_root;
     }
+    if (options.use_embedded_web) {
+        const pulse::AssetPack* assets = pulse::embeddedAssetPack();
+        if (assets == nullptr) {
+            std::fprintf(stderr, "no embedded web assets in this build\n");
+            return 2;
+        }
+        cfg.server.assets = assets;
+    }
 
-    const bool has_web_root = !cfg.server.web_root.empty();
+    const bool has_web_root = !cfg.server.web_root.empty() || cfg.server.assets != nullptr;
     const pulse::ServeResult result =
         pulse::runServe(reader, cfg, [has_web_root, open_browser](unsigned short port) {
             std::printf("pulse-engine listening on ws://127.0.0.1:%u\n",
@@ -147,20 +156,25 @@ int main(int argc, char** argv) {
     pulse::Options options;
     std::string error;
 
-    // 릴리스 zip 설계 D70. 인자 없이 실행(더블클릭)하면 exe 옆의 web/ 을 서빙하고 브라우저를
-    // 연다. 그 폴더가 없으면 지금처럼 사용법을 출력한다.
+    // 릴리스 zip 설계 D70, 웹 내장 설계 D77. 인자 없이 실행(더블클릭)하면 exe 옆의 web/ 을,
+    // 없으면 내장본을 서빙하고 브라우저를 연다. 둘 다 없으면 지금처럼 사용법을 출력한다.
     bool launched_by_default = false;
     if (argc == 1) {
         const std::filesystem::path web = webFolderNextToExe();
-        std::error_code ec;
-        const bool exists = !web.empty() && std::filesystem::is_directory(web, ec) && !ec;
-        // path::string() 은 현재 코드 페이지로 바꿀 수 없는 경로에서 예외를 던진다.
-        // 죽는 대신 사용법 출력으로 물러난다.
+        std::string web_string;
+        bool exists = false;
+        // path::string() 은 현재 코드 페이지로 바꿀 수 없는 경로에서 예외를 던진다. 그 경우
+        // 폴더는 없는 것으로 보고 내장본으로 물러난다.
         try {
-            launched_by_default = pulse::applyDefaultLaunch(options, web.string(), exists);
+            std::error_code ec;
+            exists = !web.empty() && std::filesystem::is_directory(web, ec) && !ec;
+            web_string = web.string();
         } catch (const std::exception&) {
-            launched_by_default = false;
+            exists = false;
+            web_string.clear();
         }
+        launched_by_default = pulse::applyDefaultLaunch(options, web_string, exists,
+                                                        pulse::embeddedAssetPack() != nullptr);
     }
 
     switch (launched_by_default ? pulse::ParseResult::Ok

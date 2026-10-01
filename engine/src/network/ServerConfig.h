@@ -5,6 +5,8 @@
 
 namespace pulse {
 
+class AssetPack;
+
 struct ServerConfig {
     // 0 이면 OS 가 임시 포트를 고른다. 테스트에서 쓴다.
     unsigned short port = 9000;
@@ -21,6 +23,9 @@ struct ServerConfig {
     // 비어 있으면 정적 서빙을 하지 않는다. 그 경우 업그레이드가 아닌 요청에는
     // 426 Upgrade Required 로 답한다.
     std::string web_root;
+
+    // 내장 프런트엔드 (web.pak). 설정되면 web_root 대신 이것을 서빙한다. 소유하지 않는다.
+    const AssetPack* assets = nullptr;
 };
 
 }  // namespace pulse

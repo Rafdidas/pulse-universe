@@ -5,7 +5,9 @@
 #include <fstream>
 #include <string>
 
+#include "network/AssetPack.h"
 #include "network/StaticFiles.h"
+#include "pak_builder.h"
 
 using namespace pulse;
 
@@ -212,4 +214,68 @@ TEST_CASE("a colon-style segment is not treated as an escape", "[static]") {
     const auto resolved = resolveWebPath(kRoot, "/chrome.exe:1234");
 
     REQUIRE(resolved.status != WebPathStatus::Outside);
+}
+
+namespace {
+
+// 스펙 3절 pak. 경로는 오름차순.
+std::string samplePak() {
+    return pulse_test::makePak({{"/assets/app.js", "console.log(1);"},
+                                {"/index.html", "<html>index</html>"}});
+}
+
+}  // namespace
+
+TEST_CASE("a pack lookup finds an asset by its path", "[static][pack]") {
+    const std::string bytes = samplePak();
+    const auto pack = AssetPack::parse(bytes);
+    REQUIRE(pack.has_value());
+
+    const PackAsset asset = lookupPackAsset(*pack, "/assets/app.js");
+
+    REQUIRE(asset.status == PackLookupStatus::Found);
+    REQUIRE(asset.path == "/assets/app.js");
+    REQUIRE(asset.data == "console.log(1);");
+}
+
+TEST_CASE("a pack lookup maps the root to index.html and strips the query", "[static][pack]") {
+    const std::string bytes = samplePak();
+    const auto pack = AssetPack::parse(bytes);
+    REQUIRE(pack.has_value());
+
+    REQUIRE(lookupPackAsset(*pack, "/").path == "/index.html");
+    REQUIRE(lookupPackAsset(*pack, "/assets/app.js?v=3#x").path == "/assets/app.js");
+}
+
+TEST_CASE("a pack lookup falls back to index.html for unknown and colon paths", "[static][pack]") {
+    const std::string bytes = samplePak();
+    const auto pack = AssetPack::parse(bytes);
+    REQUIRE(pack.has_value());
+
+    for (const char* target : {"/universe", "/app.js:stream", "/assets/"}) {
+        const PackAsset asset = lookupPackAsset(*pack, target);
+        REQUIRE(asset.status == PackLookupStatus::Found);
+        REQUIRE(asset.path == "/index.html");
+        REQUIRE(asset.data == "<html>index</html>");
+    }
+}
+
+TEST_CASE("a pack lookup refuses malformed and escaping targets", "[static][pack]") {
+    const std::string bytes = samplePak();
+    const auto pack = AssetPack::parse(bytes);
+    REQUIRE(pack.has_value());
+
+    for (const char* target : {"", "index.html", "/..", "/../x", "/a/../index.html",
+                               "/assets\\app.js"}) {
+        REQUIRE(lookupPackAsset(*pack, target).status == PackLookupStatus::Forbidden);
+    }
+}
+
+TEST_CASE("a pack without index.html answers 404 for unknown paths", "[static][pack]") {
+    const std::string bytes = pulse_test::makePak({{"/only.txt", "x"}});
+    const auto pack = AssetPack::parse(bytes);
+    REQUIRE(pack.has_value());
+
+    REQUIRE(lookupPackAsset(*pack, "/only.txt").status == PackLookupStatus::Found);
+    REQUIRE(lookupPackAsset(*pack, "/missing").status == PackLookupStatus::NotFound);
 }

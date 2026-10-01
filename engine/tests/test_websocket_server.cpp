@@ -17,7 +17,9 @@
 
 #include <windows.h>
 
+#include "network/AssetPack.h"
 #include "network/WebSocketServer.h"
+#include "pak_builder.h"
 
 using namespace pulse;
 namespace net = boost::asio;
@@ -584,4 +586,67 @@ TEST_CASE("without a web root a plain request gets 426 rather than silence", "[w
     io.join();
 
     REQUIRE(response.result() == http::status::upgrade_required);
+}
+
+namespace {
+
+// pak 모드 서버를 띄우고 요청 하나를 보낸 뒤 응답을 돌려준다.
+http::response<http::string_body> packRequest(const std::string& pak_bytes,
+                                              const std::string& target,
+                                              http::verb method = http::verb::get) {
+    const auto pack = AssetPack::parse(pak_bytes);
+    REQUIRE(pack.has_value());
+
+    ServerConfig cfg;
+    cfg.port = 0;
+    cfg.assets = &*pack;
+
+    net::io_context ioc;
+    WebSocketServer server(ioc, cfg);
+    const unsigned short port = server.port();
+    std::thread io([&] { ioc.run(); });
+
+    const auto response = httpRequest(port, target, method);
+
+    server.stop();
+    io.join();
+    return response;
+}
+
+const std::string kPak = pulse_test::makePak({{"/assets/app.js", "console.log(1);"},
+                                              {"/index.html", "<html>index</html>"}});
+
+}  // namespace
+
+TEST_CASE("an embedded asset is served with its content type", "[ws][pack]") {
+    const auto response = packRequest(kPak, "/assets/app.js");
+
+    REQUIRE(response.result() == http::status::ok);
+    REQUIRE(response.body() == "console.log(1);");
+    REQUIRE(response[http::field::content_type] == "text/javascript");
+    REQUIRE(response[http::field::cache_control].empty());
+}
+
+TEST_CASE("the embedded index carries no-cache and nosniff, and unknown paths fall back to it",
+          "[ws][pack]") {
+    const auto root = packRequest(kPak, "/");
+    REQUIRE(root.result() == http::status::ok);
+    REQUIRE(root.body() == "<html>index</html>");
+    REQUIRE(root[http::field::cache_control] == "no-cache");
+    REQUIRE(root[http::field::x_content_type_options] == "nosniff");
+
+    const auto fallback = packRequest(kPak, "/universe");
+    REQUIRE(fallback.result() == http::status::ok);
+    REQUIRE(fallback.body() == "<html>index</html>");
+}
+
+TEST_CASE("an embedded path escaping the root is refused", "[ws][pack]") {
+    REQUIRE(packRequest(kPak, "/../secret").result() == http::status::forbidden);
+}
+
+TEST_CASE("a non-GET request to embedded assets is rejected with 405", "[ws][pack]") {
+    const auto response = packRequest(kPak, "/", http::verb::post);
+
+    REQUIRE(response.result() == http::status::method_not_allowed);
+    REQUIRE(response[http::field::allow] == "GET");
 }
