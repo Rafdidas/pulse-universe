@@ -134,6 +134,17 @@ GPU 가 느리면 해상도(dpr)를 자동으로 낮춘다.
 
 `scripts/package.ps1 -Version 0.1.0` 이 프런트엔드를 빌드하고 `scripts/make-pak.ps1` 로 `web.pak` 으로 묶은 뒤, 엔진을 정적 링크(외부 DLL·Visual C++ 재배포 패키지 필요 없음)로 빌드하며 그 pak 을 exe 에 내장한다. `dist-release/` 에 `pulse-engine.exe`, zip, 각각의 `.sha256` 이 나오고, 스크립트 끝에서 exe 만으로 화면이 서빙되는지 확인한다. `v0.1.0` 같은 태그를 푸시하면 GitHub Actions 가 같은 스크립트로 이 네 파일을 릴리스에 올린다. 푸시와 PR 마다 `CI` 워크플로가 웹·엔진 테스트를 돌린다. 내장 없이 개발할 때는 지금처럼 `--serve --web-root web/dist` 를 쓴다.
 
+## 코드 서명 정책
+
+서명은 [SignPath Foundation](https://signpath.org/) 의 승인을 받은 릴리스부터 적용된다 (설정 절차: [docs/signing-setup.md](docs/signing-setup.md)).
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org/).
+
+- 팀 역할 — Committers and reviewers: [Rafdidas](https://github.com/Rafdidas). Approvers: [Rafdidas](https://github.com/Rafdidas).
+- 개인정보 — This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. 엔진은 127.0.0.1 에서만 듣고 외부로 아무것도 보내지 않는다.
+- 제거 — 설치하지 않는다. 받은 exe 나 푼 폴더를 지우면 된다.
+- 서명 대상 — GitHub Actions 가 이 저장소의 소스로 빌드한 `pulse-engine.exe` 뿐이다.
+
 ## 테스트
 
 ```bash
@@ -193,3 +204,7 @@ web/src/
 - 64 개를 넘는 논리 프로세서 기계에서는 코어 부하(PDH)가 프로세서 그룹 0 만 본다. 실측 흐름은 그 범위 밖 코어를 버린다.
 - 반정밀 렌더 타깃이 없는 GPU 에서는 8비트 버퍼로 그린다. 이 경로는 실제 하드웨어에서 확인하지 못했다.
 - 콘솔의 `THREE.Clock: This module has been deprecated` 경고는 R3F 내부에서 나오는 것이다.
+
+## 라이선스
+
+MIT — [LICENSE](LICENSE).
