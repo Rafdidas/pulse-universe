@@ -2,9 +2,14 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <exception>
 #include <thread>
+#include <unordered_map>
 #include <utility>
+
+#include "core/NetworkAggregator.h"
+#include "core/NetworkSnapshot.h"
 
 namespace pulse {
 namespace {
@@ -14,11 +19,13 @@ constexpr unsigned kSleepSliceMs = 20;
 
 }  // namespace
 
-EngineLoop::EngineLoop(ISystemReader& reader, EngineLoopConfig cfg, SnapshotHandler handler)
+EngineLoop::EngineLoop(ISystemReader& reader, EngineLoopConfig cfg, SnapshotHandler handler,
+                       NetworkSources network)
     : reader_(reader),
       cfg_(std::move(cfg)),
       handler_(std::move(handler)),
-      aggregator_(reader.coreCount(), cfg_.aggregator) {}
+      aggregator_(reader.coreCount(), cfg_.aggregator),
+      network_(network) {}
 
 void EngineLoop::run() {
     using Clock = std::chrono::steady_clock;
@@ -34,7 +41,27 @@ void EngineLoop::run() {
                 return;
             }
 
-            const SystemSnapshot snapshot = aggregator_.aggregate(reader_.read());
+            // 트래픽 창을 먼저 닫는다 (강제 플러시로 잠깐 걸린다). 그래야 표본 시각 t 가 방송 시각에 가깝다.
+            std::optional<RawNetworkTraffic> window;
+            if (network_.traffic != nullptr) {
+                window = network_.traffic->drain();
+            }
+
+            const RawSample sample = reader_.read();
+            SystemSnapshot snapshot = aggregator_.aggregate(sample);
+
+            if (network_.scanner != nullptr) {
+                const ConnectionScan scan = network_.scanner->scan();
+                if (!scan.error.empty()) {
+                    std::fprintf(stderr, "connections: %s\n", scan.error.c_str());
+                }
+                std::unordered_map<uint32_t, std::string> names;
+                for (const RawProcess& process : sample.processes) {
+                    names[process.pid] = process.name;
+                }
+                const NetworkView view = aggregateNetwork(scan.connections, names, window);
+                snapshot.network = buildNetworkSnapshot(view, snapshot.groups, network_.traffic != nullptr);
+            }
             handler_(snapshot);
 
             const bool is_last = cfg_.iterations != 0 && n + 1 == cfg_.iterations;

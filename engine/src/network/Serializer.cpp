@@ -2,6 +2,8 @@
 
 #include <boost/json.hpp>
 
+#include <cmath>
+
 namespace pulse {
 namespace {
 
@@ -14,6 +16,75 @@ json::value optionalNumber(const std::optional<double>& value) {
         return nullptr;
     }
     return *value;
+}
+
+// 속도(바이트/초)는 정수로 보낸다. 값이 없으면 null — 0 과 구분된다 (M12 스펙 D123).
+json::value optionalRate(const std::optional<double>& value) {
+    if (!value.has_value()) {
+        return nullptr;
+    }
+    return static_cast<std::int64_t>(std::llround(*value));
+}
+
+json::array serializeNetworkEndpoints(const std::vector<NetworkEndpointOut>& endpoints) {
+    json::array out;
+    out.reserve(endpoints.size());
+    for (const NetworkEndpointOut& e : endpoints) {
+        json::array ports;
+        for (const uint16_t port : e.ports) {
+            ports.push_back(json::value(port));
+        }
+        json::array groups;
+        for (const std::string& group : e.groups) {
+            groups.push_back(json::value(group));
+        }
+        out.push_back(json::object{
+            {"ip", e.ip},
+            {"private", e.is_private},
+            {"ports", ports},
+            {"connections", e.connections},
+            {"groups", groups},
+            {"down_bps", optionalRate(e.down_bps)},
+            {"up_bps", optionalRate(e.up_bps)},
+        });
+    }
+    return out;
+}
+
+json::array serializeNetworkConnections(const std::vector<NetworkConnectionOut>& connections) {
+    json::array out;
+    out.reserve(connections.size());
+    for (const NetworkConnectionOut& c : connections) {
+        out.push_back(json::object{
+            {"group", c.group},
+            {"pid", c.pid},
+            {"proto", c.proto},
+            {"local_port", c.local_port},
+            {"remote", c.remote},
+            {"remote_port", c.remote_port},
+            {"state", c.state},
+            {"down_bps", optionalRate(c.down_bps)},
+            {"up_bps", optionalRate(c.up_bps)},
+        });
+    }
+    return out;
+}
+
+json::object serializeNetwork(const NetworkSnapshot& network) {
+    return json::object{
+        {"traffic", network.traffic},
+        {"summary",
+         json::object{
+             {"connections", network.summary.connections},
+             {"established", network.summary.established},
+             {"endpoints", network.summary.endpoints},
+             {"udp_sockets", network.summary.udp_sockets},
+             {"down_bps", optionalRate(network.summary.down_bps)},
+             {"up_bps", optionalRate(network.summary.up_bps)},
+         }},
+        {"endpoints", serializeNetworkEndpoints(network.endpoints)},
+        {"connections", serializeNetworkConnections(network.connections)},
+    };
 }
 
 json::string accountName(Account account) {
@@ -109,7 +180,8 @@ std::string serializeHello(const HelloInfo& info) {
         {"v", kProtocolVersion},
         {"interval_ms", info.interval_ms},
         {"core_count", info.core_count},
-        {"capabilities", json::object{{"thread_mapping", info.thread_mapping}}},
+        {"capabilities",
+         json::object{{"thread_mapping", info.thread_mapping}, {"network_traffic", info.network_traffic}}},
         {"host", json::object{{"os", info.os}, {"elevated", info.elevated}}},
         {"session", info.session},
     };
@@ -139,6 +211,7 @@ std::string serializeSnapshot(const SystemSnapshot& snapshot) {
              {"service_proc_count", snapshot.ambient.service_proc_count},
              {"service_mem_mb", snapshot.ambient.service_mem_mb},
          }},
+        {"network", serializeNetwork(snapshot.network)},
     };
     return json::serialize(message);
 }

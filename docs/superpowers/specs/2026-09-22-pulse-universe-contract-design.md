@@ -100,7 +100,7 @@ VITE_PULSE_WS_URL 가 정의되어 있으면  → 그 값을 사용   (개발: V
   "v": 1,
   "interval_ms": 1000,
   "core_count": 16,
-  "capabilities": { "thread_mapping": "estimated" },
+  "capabilities": { "thread_mapping": "estimated", "network_traffic": "unavailable" },
   "host": { "os": "Windows", "elevated": true },
   "session": "31dbc19e0b0a6786"
 }
@@ -117,6 +117,8 @@ VITE_PULSE_WS_URL 가 정의되어 있으면  → 그 값을 사용   (개발: V
 **정정 (M2 구현 후).** 이 문단은 원래 이 필드가 "ETW 확장의 유일한 계약 변경 지점" 이라고 적었다. 사실이 아니다. `flows[].source`(4.4절) 도 함께 `"measured"` 가 되어야 하며, 두 값은 항상 일치해야 한다 — 하나는 연결 시점의 능력 선언이고 다른 하나는 개별 흐름의 출처 표시다. 구현에서도 두 기본값이 서로 다른 파일에 있으므로(`core/Snapshot.h` 와 `network/Serializer.h`), 한쪽만 바꾸면 조용히 어긋난다. 두 파일에 서로를 가리키는 주석을 달아두었다.
 
 **정정 (ETW 확장 후).** 두 값의 뜻을 나눈다. `capabilities.thread_mapping` 은 엔진이 시작할 때 ETW 수집기가 돌았는지다 (`--mapping auto|estimated|measured`, 관리자 권한이 없으면 `auto` 는 `"estimated"`). `flows[].source` 는 스냅샷마다의 실제 출처다. 수집기가 살아 있는 동안 두 값은 같다. 수집기가 도중에 멈추면 이후 흐름은 `"estimated"` 로 돌아가고 hello 는 `"measured"` 로 남는다 — 이 경우에만 어긋난다. 프론트엔드는 흐름마다 `source` 를 읽으므로 영향이 없다. 설계: `2026-09-30-etw-thread-mapping-design.md`.
+
+**추가 (M12, 프로토콜 버전은 `1` 유지).** `capabilities.network_traffic` 은 엔진이 시작할 때 네트워크 트래픽 ETW 수집기(`PulseUniverse-Net` 세션)가 돌았는지다: `"measured"` 또는 `"unavailable"` (`--mapping auto|estimated|measured`, 관리자 권한이 없으면 `auto` 는 `"unavailable"`). 스냅샷의 `network.traffic` 과 같은 값이다. 설계: `2026-10-01-m12-network-contract-design.md`.
 
 ### 4.4 메시지: snapshot
 
@@ -172,9 +174,24 @@ VITE_PULSE_WS_URL 가 정의되어 있으면  → 그 값을 사용   (개발: V
     ],
     "terminated": [18002]
   },
-  "ambient": { "service_proc_count": 84, "service_mem_mb": 1400 }
+  "ambient": { "service_proc_count": 84, "service_mem_mb": 1400 },
+  "network": {
+    "traffic": "measured",
+    "summary": { "connections": 79, "established": 72, "endpoints": 50, "udp_sockets": 46, "down_bps": 120000, "up_bps": 8000 },
+    "endpoints": [
+      { "ip": "142.250.76.110", "private": false, "ports": [443], "connections": 3,
+        "groups": ["whale.exe:22008"], "down_bps": 12400000, "up_bps": 800000 }
+    ],
+    "connections": [
+      { "group": "whale.exe:22008", "pid": 8400, "proto": "tcp", "local_port": 52141,
+        "remote": "142.250.76.110", "remote_port": 443, "state": "established",
+        "down_bps": 12000, "up_bps": 400 }
+    ]
+  }
 }
 ```
+
+`network` 는 M12 에서 추가됐다 (버전 `1` 유지, 추가만 하는 변경).
 
 ### 4.5 필드 계약
 
@@ -198,6 +215,14 @@ VITE_PULSE_WS_URL 가 정의되어 있으면  → 그 값을 사용   (개발: V
 | `lifecycle.spawned[].group` | string | 소속 그룹의 `key`. 그룹에 속하지 않으면 빈 문자열 | 어느 노드에서 생성 연출을 재생할지 |
 | `lifecycle.terminated` | array of pid | 실제 종료된 프로세스 | Collapse / 붕괴 |
 | `ambient` | object | svchost 계열 집계 | 배경 미세 입자 |
+| `network.traffic` | `"measured"` 또는 `"unavailable"` | 트래픽 수집기가 있는가. 없으면 모든 `*_bps` 가 null | Remote 노드·흐름의 선명도 |
+| `network.summary` | object | 연결·끝점·UDP 소켓 수와 전체 속도. **모든 프로세스** 기준 (그룹에 속하지 않는 것 포함). `endpoints` 는 상한으로 잘리기 전의 총수 | 대시보드·상태 줄 |
+| `network.endpoints[]` | array | 원격 IP 별 끝점. 최대 64 개(연결 수 내림차순, 같으면 IP 오름차순). 그룹에 속한 연결만으로 다시 집계한 `ports`(오름차순)·`connections`·`groups`(그룹 `key`)·속도 합 | Remote 노드 크기·글로우 |
+| `network.endpoints[].private` | bool | 사설망·링크 로컬 주소 | 노드 구분 |
+| `network.connections[]` | array | 그룹의 프로세스(루트·자식)가 가진 연결. 남은 끝점에 속한 것 중 속도가 큰 순으로 최대 256 개, `group`·`remote`·`remote_port`·`local_port`·`proto` 오름차순. 그룹에 속하지 않는 PID 의 연결은 없다 | 프로세스 ↔ 끝점 흐름선 |
+| `network.connections[].proto` | `"tcp"` 또는 `"udp"` | UDP 는 ETW 로 원격이 확인된 플로우만 (관리자 전용) | 선 모양 |
+| `network.connections[].state` | string | 소문자 TCP 상태(`established`, `syn_sent` ...). UDP 는 `"none"` | 선 상태 |
+| `*_bps` (`network.*`) | int 또는 null | 마지막 창(약 `interval_ms`)의 평균 속도, 바이트/초. 측정하지 못했으면 null, 측정된 0 은 0 | 입자 속도·밀도 |
 
 ### 4.6 lifecycle 이 별도로 존재하는 이유
 

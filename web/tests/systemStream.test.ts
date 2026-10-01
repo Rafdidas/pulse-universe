@@ -9,6 +9,7 @@ import {
   type StreamStatus,
 } from '../src/stream/SystemStream';
 import { PROTOCOL_VERSION, type Snapshot } from '../src/protocol/schema';
+import { emptyNetwork } from './fixtures/network';
 
 class FakeSocket implements SocketLike {
   onopen: ((ev: unknown) => void) | null = null;
@@ -98,7 +99,7 @@ function helloText(): string {
     v: PROTOCOL_VERSION,
     interval_ms: 1000,
     core_count: 28,
-    capabilities: { thread_mapping: 'estimated' },
+    capabilities: { thread_mapping: 'estimated', network_traffic: 'unavailable' },
     host: { os: 'Windows', elevated: true },
     session: 'abc123deadbeef01',
   });
@@ -122,6 +123,7 @@ function snapshotText(seq: number): string {
     flows: [],
     lifecycle: { spawned: [], terminated: [] },
     ambient: { service_proc_count: 0, service_mem_mb: 0 },
+    network: emptyNetwork,
   });
 }
 

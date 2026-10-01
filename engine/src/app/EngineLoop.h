@@ -8,6 +8,7 @@
 #include "core/DataAggregator.h"
 #include "core/Snapshot.h"
 #include "platform/ISystemReader.h"
+#include "platform/RawNetwork.h"
 
 namespace pulse {
 
@@ -17,13 +18,20 @@ struct EngineLoopConfig {
     AggregatorConfig aggregator;
 };
 
+// M12 스펙 3절. 네트워크 정보를 만드는 데 쓰는 선택 의존성. 둘 다 호출자가 소유하고 루프보다 오래 산다.
+// scanner 가 없으면 스냅샷의 network 는 "unavailable, 빈 목록"이다.
+struct NetworkSources {
+    IConnectionScanner* scanner = nullptr;
+    INetworkTrafficSource* traffic = nullptr;
+};
+
 // 표본을 주기적으로 떠서 스냅샷으로 만들고 콜백에 넘긴다.
 // WebSocket 도 콘솔도 모른다 — 콜백이 무엇을 하는지는 호출자의 일이다.
 class EngineLoop {
 public:
     using SnapshotHandler = std::function<void(const SystemSnapshot&)>;
 
-    EngineLoop(ISystemReader& reader, EngineLoopConfig cfg, SnapshotHandler handler);
+    EngineLoop(ISystemReader& reader, EngineLoopConfig cfg, SnapshotHandler handler, NetworkSources network = {});
 
     EngineLoop(const EngineLoop&) = delete;
     EngineLoop& operator=(const EngineLoop&) = delete;
@@ -49,6 +57,7 @@ private:
     EngineLoopConfig cfg_;
     SnapshotHandler handler_;
     DataAggregator aggregator_;
+    NetworkSources network_;
     std::atomic<bool> stop_requested_{false};
     std::string error_;
 };

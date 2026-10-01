@@ -67,6 +67,47 @@ export const AmbientSchema = z.object({
   service_mem_mb: z.number(),
 });
 
+// M12: 네트워크 정보 (계약서 4.4 절). 속도는 바이트/초이고 측정하지 못했으면 null 이다 (0 과 구분된다).
+export const NetworkEndpointSchema = z.object({
+  ip: z.string(),
+  private: z.boolean(),
+  ports: z.array(z.number()),
+  connections: z.number(),
+  groups: z.array(z.string()),
+  down_bps: NullableNumber,
+  up_bps: NullableNumber,
+});
+
+export const NetworkConnectionSchema = z.object({
+  group: z.string(),
+  pid: z.number(),
+  proto: z.enum(['tcp', 'udp']),
+  local_port: z.number(),
+  remote: z.string(),
+  remote_port: z.number(),
+  state: z.string(),
+  down_bps: NullableNumber,
+  up_bps: NullableNumber,
+});
+
+export const NetworkSummarySchema = z.object({
+  connections: z.number(),
+  established: z.number(),
+  endpoints: z.number(),
+  udp_sockets: z.number(),
+  down_bps: NullableNumber,
+  up_bps: NullableNumber,
+});
+
+export const NetworkTrafficSchema = z.enum(['measured', 'unavailable']);
+
+export const NetworkSchema = z.object({
+  traffic: NetworkTrafficSchema,
+  summary: NetworkSummarySchema,
+  endpoints: z.array(NetworkEndpointSchema),
+  connections: z.array(NetworkConnectionSchema),
+});
+
 export const SnapshotSchema = z.object({
   type: z.literal('snapshot'),
   v: z.literal(PROTOCOL_VERSION),
@@ -78,6 +119,7 @@ export const SnapshotSchema = z.object({
   flows: z.array(FlowSchema),
   lifecycle: LifecycleSchema,
   ambient: AmbientSchema,
+  network: NetworkSchema,
 });
 
 export const HelloSchema = z.object({
@@ -87,6 +129,7 @@ export const HelloSchema = z.object({
   core_count: z.number(),
   capabilities: z.object({
     thread_mapping: z.enum(['estimated', 'measured']),
+    network_traffic: NetworkTrafficSchema,
   }),
   host: z.object({
     os: z.string(),
@@ -105,6 +148,10 @@ export type SpawnedProcess = z.infer<typeof SpawnedProcessSchema>;
 export type Lifecycle = z.infer<typeof LifecycleSchema>;
 export type SystemTotals = z.infer<typeof SystemTotalsSchema>;
 export type Ambient = z.infer<typeof AmbientSchema>;
+export type NetworkEndpoint = z.infer<typeof NetworkEndpointSchema>;
+export type NetworkConnection = z.infer<typeof NetworkConnectionSchema>;
+export type NetworkSummary = z.infer<typeof NetworkSummarySchema>;
+export type Network = z.infer<typeof NetworkSchema>;
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type Hello = z.infer<typeof HelloSchema>;
 export type Message = z.infer<typeof MessageSchema>;

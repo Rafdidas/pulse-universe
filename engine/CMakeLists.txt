@@ -23,6 +23,7 @@ add_library(pulse_core
   src/core/FlowKey.cpp
   src/core/NetworkEvents.cpp
   src/core/NetworkAggregator.cpp
+  src/core/NetworkSnapshot.cpp
   src/core/DataAggregator.cpp
   src/app/EngineLoop.cpp
   src/app/ServeApp.cpp
