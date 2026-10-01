@@ -42,7 +42,30 @@ std::string portList(const std::vector<uint16_t>& ports) {
     return text;
 }
 
+// "  down 1.2 MB/s  up 340 B/s", 측정하지 못했으면 빈 문자열.
+std::string rateText(const std::optional<double>& down, const std::optional<double>& up) {
+    if (!down.has_value() || !up.has_value()) {
+        return "";
+    }
+    return "  down " + formatRate(*down) + "  up " + formatRate(*up);
+}
+
 }  // namespace
+
+std::string formatRate(double bytes_per_second) {
+    char text[32];
+    const double v = bytes_per_second < 0.0 ? 0.0 : bytes_per_second;
+    if (v < 1024.0) {
+        std::snprintf(text, sizeof(text), "%.0f B/s", v);
+    } else if (v < 1024.0 * 1024.0) {
+        std::snprintf(text, sizeof(text), "%.1f KB/s", v / 1024.0);
+    } else if (v < 1024.0 * 1024.0 * 1024.0) {
+        std::snprintf(text, sizeof(text), "%.1f MB/s", v / (1024.0 * 1024.0));
+    } else {
+        std::snprintf(text, sizeof(text), "%.1f GB/s", v / (1024.0 * 1024.0 * 1024.0));
+    }
+    return text;
+}
 
 const char* tcpStateName(TcpState state) {
     switch (state) {
@@ -63,17 +86,24 @@ const char* tcpStateName(TcpState state) {
     return "-";
 }
 
-std::string formatNetworkTable(const NetworkView& view) {
+std::string formatNetworkTable(const NetworkView& view, const std::string& traffic_note) {
     const NetworkSummary& s = view.summary;
     std::string out;
     char line[512];
 
     std::snprintf(line, sizeof(line),
                   "Network  connections %u (established %u) | endpoints %u | udp sockets %u | skipped: "
-                  "listening %u, loopback %u, inactive %u\n",
+                  "listening %u, loopback %u, inactive %u",
                   s.connections, s.established, s.endpoints, s.udp_sockets, s.listening, s.loopback,
                   s.inactive);
     out += line;
+    if (s.traffic_measured) {
+        out += " | down " + formatRate(s.down_bps) + ", up " + formatRate(s.up_bps);
+    }
+    out += "\n";
+    if (!s.traffic_measured && !traffic_note.empty()) {
+        out += "traffic: not measured (" + traffic_note + ")\n";
+    }
 
     for (const ProcessNetwork& process : view.processes) {
         if (process.connections.empty()) {
@@ -86,6 +116,7 @@ std::string formatNetworkTable(const NetworkView& view) {
             out += ", " + std::to_string(process.udp_sockets) + " udp socket" +
                    (process.udp_sockets == 1 ? "" : "s");
         }
+        out += rateText(process.down_bps, process.up_bps);
         out += "\n";
 
         const size_t shown = std::min(process.connections.size(), MAX_CONNECTIONS_PER_PROCESS);
@@ -93,9 +124,11 @@ std::string formatNetworkTable(const NetworkView& view) {
             const ConnectionView& c = process.connections[i];
             const std::string left = endpointText(c.local_ip, c.local_port);
             const std::string right = endpointText(c.remote_ip, c.remote_port);
-            std::snprintf(line, sizeof(line), "  TCP  %-24s -> %-24s %s\n", left.c_str(), right.c_str(),
-                          tcpStateName(c.state));
+            std::snprintf(line, sizeof(line), "  %s  %-24s -> %-24s %s", c.protocol == NetProtocol::Udp ? "UDP" : "TCP",
+                          left.c_str(), right.c_str(), tcpStateName(c.state));
             out += line;
+            out += rateText(c.down_bps, c.up_bps);
+            out += "\n";
         }
         if (process.connections.size() > shown) {
             out += "  ... and " + std::to_string(process.connections.size() - shown) + " more\n";
@@ -121,6 +154,7 @@ std::string formatNetworkTable(const NetworkView& view) {
                           e.connection_count == 1 ? " " : "s");
             out += line;
             out += join(e.processes, kMaxProcessNames);
+            out += rateText(e.down_bps, e.up_bps);
             out += "\n";
         }
         if (view.endpoints.size() > shown) {

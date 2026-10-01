@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <exception>
 #include <filesystem>
+#include <memory>
+#include <optional>
 #include <chrono>
 #include <string>
 #include <system_error>
@@ -17,6 +19,7 @@
 #include "cli/TableFormatter.h"
 #include "network/Serializer.h"
 #include "platform/windows/EmbeddedAssets.h"
+#include "platform/windows/EtwNetworkCollector.h"
 #include "platform/windows/EtwSchedulerCollector.h"
 #include "platform/windows/WindowsConnectionScanner.h"
 #include "platform/windows/WindowsSystemReader.h"
@@ -63,6 +66,12 @@ BOOL WINAPI onConsoleControl(DWORD) {
     return FALSE;
 }
 
+// --connections 가 네트워크 ETW 세션을 열었을 때만 등록한다. 같은 이유로 이름으로 멈춘다.
+BOOL WINAPI onNetworkConsoleControl(DWORD) {
+    pulse::EtwNetworkCollector::stopSessionByName();
+    return FALSE;
+}
+
 int runDump(pulse::ISystemReader& reader, const pulse::Options& options) {
     pulse::EngineLoopConfig cfg;
     cfg.interval_ms = options.interval_ms;
@@ -85,9 +94,42 @@ int runDump(pulse::ISystemReader& reader, const pulse::Options& options) {
 // M10 스펙 5절. 이 PC 의 연결을 프로세스별로 간격마다 출력한다. 관리자 권한이 필요 없다.
 int runConnections(pulse::ISystemReader& reader, const pulse::Options& options) {
     pulse::WindowsConnectionScanner scanner;
+
+    // M11 스펙 D114: --mapping 이 트래픽 측정에도 같은 규칙으로 쓰인다.
+    std::unique_ptr<pulse::EtwNetworkCollector> traffic;
+    std::string traffic_note;
+    if (options.mapping == pulse::Mapping::Estimated) {
+        traffic_note = "--mapping estimated";
+    } else {
+        std::string error;
+        traffic = pulse::EtwNetworkCollector::start(error);
+        if (traffic != nullptr) {
+            ::SetConsoleCtrlHandler(onNetworkConsoleControl, TRUE);
+            std::fprintf(stderr, "network traffic: measured (ETW)\n");
+        } else if (options.mapping == pulse::Mapping::Measured) {
+            std::fprintf(stderr, "network traffic: cannot measure - %s\n", error.c_str());
+            return 1;
+        } else {
+            traffic_note = error;
+        }
+    }
+    // 공급자를 켠 직후 잠시는 이벤트가 오지 않는다. 기다린 뒤 첫 drain 으로 창을 연다 (첫 drain 은 시작일 뿐이다).
+    if (traffic != nullptr) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        traffic->drain();
+    }
+
     for (unsigned round = 0; options.iterations == 0 || round < options.iterations; ++round) {
-        if (round > 0) {
+        // 측정 중이면 첫 줄도 한 창을 채운 뒤에 낸다.
+        if (round > 0 || traffic != nullptr) {
             std::this_thread::sleep_for(std::chrono::milliseconds(options.interval_ms));
+        }
+        std::optional<pulse::RawNetworkTraffic> window;
+        if (traffic != nullptr) {
+            window = traffic->drain();
+            if (!window.has_value()) {
+                traffic_note = "ETW stopped";
+            }
         }
         const pulse::RawSample sample = reader.read();
         std::unordered_map<uint32_t, std::string> names;
@@ -98,9 +140,13 @@ int runConnections(pulse::ISystemReader& reader, const pulse::Options& options) 
         if (!scan.error.empty()) {
             std::fprintf(stderr, "connections: %s\n", scan.error.c_str());
         }
-        const pulse::NetworkView view = pulse::aggregateNetwork(scan.connections, names);
-        std::printf("%s\n", pulse::formatNetworkTable(view).c_str());
+        const pulse::NetworkView view = pulse::aggregateNetwork(scan.connections, names, window);
+        std::printf("%s\n", pulse::formatNetworkTable(view, traffic_note).c_str());
         std::fflush(stdout);
+    }
+    if (traffic != nullptr) {
+        // 수집기가 사라진 뒤에 Ctrl+C 가 다른 엔진의 세션을 멈추지 않게 핸들러를 뺀다.
+        ::SetConsoleCtrlHandler(onNetworkConsoleControl, FALSE);
     }
     return 0;
 }

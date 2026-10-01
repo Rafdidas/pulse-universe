@@ -20,6 +20,8 @@ add_library(pulse_core
   src/core/RunTimeTable.cpp
   src/core/MeasuredFlows.cpp
   src/core/IpAddress.cpp
+  src/core/FlowKey.cpp
+  src/core/NetworkEvents.cpp
   src/core/NetworkAggregator.cpp
   src/core/DataAggregator.cpp
   src/app/EngineLoop.cpp
@@ -35,6 +37,7 @@ add_library(pulse_core
   src/network/AssetPack.cpp
   src/platform/windows/EmbeddedAssets.cpp
   src/platform/windows/WindowsConnectionScanner.cpp
+  src/platform/windows/EtwNetworkCollector.cpp
 )
 target_include_directories(pulse_core PUBLIC src)
 target_link_libraries(pulse_core PUBLIC Boost::json Boost::beast)

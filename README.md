@@ -94,7 +94,7 @@ pulse-engine --serve [--port N] [--web-root DIR] [--iterations N]
 |---|---|
 | `--dump` | 프로세스 그룹 표를 주기마다 콘솔에 출력한다. 작업 관리자와 숫자를 대조할 때 쓴다 |
 | `--json` | 계약 형식의 스냅샷 하나를 stdout 에 출력하고 끝난다 |
-| `--connections` | 이 PC 의 TCP 연결을 프로세스별로, 원격 끝점으로 묶어 주기마다 출력한다. 관리자 권한이 필요 없다 (Network Universe M10) |
+| `--connections` | 이 PC 의 TCP 연결을 프로세스별로, 원격 끝점으로 묶어 주기마다 출력한다. 관리자 권한 없이 연결 목록이 나오고, 관리자로 실행하면 ETW 로 연결·프로세스·끝점별 다운로드·업로드 속도(`down`/`up`)와 UDP 원격 끝점이 더해진다. `--mapping estimated` 는 측정하지 않고 `measured` 는 측정할 수 없으면 종료한다 (Network Universe M10~M11) |
 | `--serve` | `127.0.0.1` 에서 WebSocket 으로 스냅샷을 스트리밍한다 |
 
 서버는 `127.0.0.1` 에만 바인딩한다. 브라우저가 보내는 `Origin` 은 허용 목록(`http://localhost:5173`, `http://127.0.0.1:5173`)에 있어야 하고, 다른 출처가 필요하면 `--allow-origin` 을 반복해서 준다.
