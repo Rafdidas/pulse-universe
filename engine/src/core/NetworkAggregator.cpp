@@ -86,8 +86,8 @@ NetworkView aggregateNetwork(const std::vector<RawConnection>& connections,
         process.process = nameFor(pid, names);
         std::sort(process.connections.begin(), process.connections.end(),
                   [](const ConnectionView& a, const ConnectionView& b) {
-                      return std::tie(a.remote_ip, a.remote_port, a.local_port) <
-                             std::tie(b.remote_ip, b.remote_port, b.local_port);
+                      return std::tie(a.remote_ip, a.remote_port, a.local_port, a.local_ip) <
+                             std::tie(b.remote_ip, b.remote_port, b.local_port, b.local_ip);
                   });
         view.processes.push_back(std::move(process));
     }

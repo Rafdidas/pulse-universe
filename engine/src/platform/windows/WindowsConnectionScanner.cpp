@@ -94,6 +94,9 @@ void readTcp4(ConnectionScan& scan) {
         note(scan, "GetExtendedTcpTable(AF_INET)", result);
         return;
     }
+    if (buffer.empty()) {
+        return;  // 크기를 물은 첫 호출이 곧바로 성공하면 표가 비어 있다.
+    }
     const auto* table = reinterpret_cast<const MIB_TCPTABLE_OWNER_PID*>(buffer.data());
     for (DWORD i = 0; i < table->dwNumEntries; ++i) {
         const MIB_TCPROW_OWNER_PID& row = table->table[i];
@@ -117,6 +120,9 @@ void readTcp6(ConnectionScan& scan) {
     if (result != NO_ERROR) {
         note(scan, "GetExtendedTcpTable(AF_INET6)", result);
         return;
+    }
+    if (buffer.empty()) {
+        return;  // 크기를 물은 첫 호출이 곧바로 성공하면 표가 비어 있다.
     }
     const auto* table = reinterpret_cast<const MIB_TCP6TABLE_OWNER_PID*>(buffer.data());
     for (DWORD i = 0; i < table->dwNumEntries; ++i) {
@@ -142,6 +148,9 @@ void readUdp4(ConnectionScan& scan) {
         note(scan, "GetExtendedUdpTable(AF_INET)", result);
         return;
     }
+    if (buffer.empty()) {
+        return;  // 크기를 물은 첫 호출이 곧바로 성공하면 표가 비어 있다.
+    }
     const auto* table = reinterpret_cast<const MIB_UDPTABLE_OWNER_PID*>(buffer.data());
     for (DWORD i = 0; i < table->dwNumEntries; ++i) {
         const MIB_UDPROW_OWNER_PID& row = table->table[i];
@@ -162,6 +171,9 @@ void readUdp6(ConnectionScan& scan) {
     if (result != NO_ERROR) {
         note(scan, "GetExtendedUdpTable(AF_INET6)", result);
         return;
+    }
+    if (buffer.empty()) {
+        return;  // 크기를 물은 첫 호출이 곧바로 성공하면 표가 비어 있다.
     }
     const auto* table = reinterpret_cast<const MIB_UDP6TABLE_OWNER_PID*>(buffer.data());
     for (DWORD i = 0; i < table->dwNumEntries; ++i) {

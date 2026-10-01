@@ -46,7 +46,7 @@ int hexValue(char c) {
 }
 
 // 콜론으로 나뉜 16 비트 그룹들. 끝의 IPv4 ("::ffff:1.2.3.4") 는 그룹 두 개로 센다.
-bool parseGroups(std::string_view text, std::vector<uint16_t>& groups) {
+bool parseGroups(std::string_view text, std::vector<uint16_t>& groups, bool allow_ipv4_tail) {
     if (text.empty()) {
         return true;
     }
@@ -56,7 +56,7 @@ bool parseGroups(std::string_view text, std::vector<uint16_t>& groups) {
         const std::string_view piece =
             text.substr(start, colon == std::string_view::npos ? std::string_view::npos : colon - start);
         const bool last = colon == std::string_view::npos;
-        if (last && piece.find('.') != std::string_view::npos) {
+        if (last && allow_ipv4_tail && piece.find('.') != std::string_view::npos) {
             std::array<uint8_t, 4> v4{};
             if (!parseIpv4(piece, v4)) {
                 return false;
@@ -93,7 +93,7 @@ bool parseIpv6(std::string_view text, std::array<uint8_t, 16>& out) {
     std::vector<uint16_t> head;
     std::vector<uint16_t> tail;
     if (gap == std::string_view::npos) {
-        if (!parseGroups(text, head) || head.size() != 8) {
+        if (!parseGroups(text, head, true) || head.size() != 8) {
             return false;
         }
     } else {
@@ -101,7 +101,8 @@ bool parseIpv6(std::string_view text, std::array<uint8_t, 16>& out) {
         if (text.find("::", gap + 1) != std::string_view::npos) {
             return false;
         }
-        if (!parseGroups(text.substr(0, gap), head) || !parseGroups(text.substr(gap + 2), tail)) {
+        // 점 표기 IPv4 는 주소 전체의 마지막 조각에만 올 수 있다 ("::" 뒤쪽 끝).
+        if (!parseGroups(text.substr(0, gap), head, false) || !parseGroups(text.substr(gap + 2), tail, true)) {
             return false;
         }
         if (head.size() + tail.size() > 7) {

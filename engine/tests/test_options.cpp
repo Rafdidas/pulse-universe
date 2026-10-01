@@ -377,6 +377,15 @@ TEST_CASE("--connections cannot be combined with another mode", "[options]") {
     REQUIRE(error == "only one mode may be given, saw --connections");
 }
 
+TEST_CASE("--connections accepts --max-groups and --mapping like the other modes", "[options]") {
+    Options options;
+    std::string error;
+    const char* argv[] = {"pulse-engine", "--connections", "--max-groups", "10", "--mapping", "estimated"};
+
+    REQUIRE(parseOptions(6, argv, options, error) == ParseResult::Ok);
+    REQUIRE(options.mode == Mode::Connections);
+}
+
 TEST_CASE("usage lists --connections", "[options]") {
     REQUIRE(usageText().find("--connections") != std::string::npos);
 }

@@ -13,12 +13,31 @@ using namespace pulse;
 
 namespace {
 
+// WSAStartup 와 짝을 이루는 WSACleanup. REQUIRE 가 실패해도 정리되도록 가장 먼저 만든다.
+class WinsockSession {
+public:
+    WinsockSession() {
+        WSADATA data;
+        started_ = ::WSAStartup(MAKEWORD(2, 2), &data) == 0;
+    }
+    ~WinsockSession() {
+        if (started_) {
+            ::WSACleanup();
+        }
+    }
+    WinsockSession(const WinsockSession&) = delete;
+    WinsockSession& operator=(const WinsockSession&) = delete;
+    bool started() const { return started_; }
+
+private:
+    bool started_ = false;
+};
+
 // 이 프로세스 안에서 127.0.0.1 의 TCP 리스너와 그에 붙은 클라이언트를 연다. 소멸 시 모두 닫는다.
 class LoopbackPair {
 public:
     LoopbackPair() {
-        WSADATA data;
-        REQUIRE(::WSAStartup(MAKEWORD(2, 2), &data) == 0);
+        REQUIRE(winsock_.started());
 
         listener_ = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         REQUIRE(listener_ != INVALID_SOCKET);
@@ -43,16 +62,21 @@ public:
     }
 
     ~LoopbackPair() {
-        ::closesocket(accepted_);
-        ::closesocket(client_);
-        ::closesocket(listener_);
-        ::WSACleanup();
+        // 생성자가 중간에 실패하면 일부 소켓만 열려 있다.
+        for (const SOCKET socket : {accepted_, client_, listener_}) {
+            if (socket != INVALID_SOCKET) {
+                ::closesocket(socket);
+            }
+        }
     }
+    LoopbackPair(const LoopbackPair&) = delete;
+    LoopbackPair& operator=(const LoopbackPair&) = delete;
 
     uint16_t listenerPort() const { return listener_port_; }
     uint16_t clientPort() const { return client_port_; }
 
 private:
+    WinsockSession winsock_;
     SOCKET listener_ = INVALID_SOCKET;
     SOCKET client_ = INVALID_SOCKET;
     SOCKET accepted_ = INVALID_SOCKET;
@@ -94,10 +118,14 @@ TEST_CASE("the scanner sees this process's loopback TCP connections", "[network]
 }
 
 TEST_CASE("the scanner sees a UDP socket with no remote address", "[network][integration]") {
-    WSADATA data;
-    REQUIRE(::WSAStartup(MAKEWORD(2, 2), &data) == 0);
+    WinsockSession winsock;
+    REQUIRE(winsock.started());
     SOCKET udp = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     REQUIRE(udp != INVALID_SOCKET);
+    struct Closer {
+        SOCKET socket;
+        ~Closer() { ::closesocket(socket); }
+    } closer{udp};
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
@@ -108,9 +136,8 @@ TEST_CASE("the scanner sees a UDP socket with no remote address", "[network][int
 
     WindowsConnectionScanner scanner;
     const ConnectionScan scan = scanner.scan();
-    ::closesocket(udp);
-    ::WSACleanup();
 
+    CHECK(scan.error.empty());
     const RawConnection* found = find(scan, NetProtocol::Udp, port, TcpState::None, 0);
     REQUIRE(found != nullptr);
     CHECK(found->local_ip == "127.0.0.1");

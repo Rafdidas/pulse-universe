@@ -50,7 +50,8 @@ TEST_CASE("parseIp reads IPv4 and IPv6 text", "[ip]") {
     REQUIRE(parseIp("1:2:3:4:5:6:7:8").has_value());
 
     for (const char* bad : {"", "1.2.3", "1.2.3.4.5", "256.1.1.1", "01.2.3.4", "a.b.c.d", "1::2::3", ":::", "12345::1",
-                            "1:2:3:4:5:6:7:8:9", "1:2:3:4:5:6:7", "::g", "1.2.3.4:80"}) {
+                            "1:2:3:4:5:6:7:8:9", "1:2:3:4:5:6:7", "::g", "1.2.3.4:80", "1.2.3.4::", "1.2.3.4::1",
+                            "1:2:3:4:5:1.2.3.4:6"}) {
         INFO(bad);
         REQUIRE_FALSE(parseIp(bad).has_value());
     }
@@ -237,6 +238,17 @@ TEST_CASE("the same connections in any order give the same view", "[network]") {
             CHECK(shuffled.endpoints[i].ip == reference.endpoints[i].ip);
         }
     }
+}
+
+TEST_CASE("connections with the same remote and local port but different local IPs keep a stable order", "[network]") {
+    RawConnection a = tcp(100, "10.0.0.1", 5000, "1.1.1.1", 443);
+    RawConnection b = tcp(100, "10.0.0.2", 5000, "1.1.1.1", 443);
+    const NetworkView forward = aggregateNetwork({a, b}, kNames);
+    const NetworkView backward = aggregateNetwork({b, a}, kNames);
+
+    REQUIRE(forward.processes[0].connections.size() == 2);
+    CHECK(forward.processes[0].connections[0].local_ip == "10.0.0.1");
+    CHECK(backward.processes[0].connections[0].local_ip == "10.0.0.1");
 }
 
 TEST_CASE("an empty scan gives an empty view", "[network]") {

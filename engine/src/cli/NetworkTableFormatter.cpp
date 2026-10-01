@@ -108,10 +108,20 @@ std::string formatNetworkTable(const NetworkView& view) {
         for (size_t i = 0; i < shown; ++i) {
             const RemoteEndpoint& e = view.endpoints[i];
             const std::string name = e.ip + (e.is_private ? " (lan)" : "");
-            std::snprintf(line, sizeof(line), "  %-26s %-18s %3u connection%s  %s\n", name.c_str(),
-                          portList(e.ports).c_str(), e.connection_count, e.connection_count == 1 ? " " : "s",
-                          join(e.processes, kMaxProcessNames).c_str());
+            // 포트 목록과 이름은 길이 제한이 없으니 고정 폭 칸만 snprintf 로 만들고 나머지는 이어 붙인다.
+            // (한 줄이 버퍼를 넘어도 줄바꿈이 잘리지 않는다.)
+            std::snprintf(line, sizeof(line), "  %-26s ", name.c_str());
             out += line;
+            const std::string ports = portList(e.ports);
+            out += ports;
+            if (ports.size() < 18) {
+                out.append(18 - ports.size(), ' ');
+            }
+            std::snprintf(line, sizeof(line), " %3u connection%s  ", e.connection_count,
+                          e.connection_count == 1 ? " " : "s");
+            out += line;
+            out += join(e.processes, kMaxProcessNames);
+            out += "\n";
         }
         if (view.endpoints.size() > shown) {
             out += "  ... and " + std::to_string(view.endpoints.size() - shown) + " more endpoints\n";

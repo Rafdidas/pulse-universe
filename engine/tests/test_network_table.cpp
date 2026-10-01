@@ -103,6 +103,22 @@ TEST_CASE("an IPv6 endpoint is bracketed so the port stays readable", "[networkt
     CHECK(formatNetworkTable(view).find("[2001:4860:4860::8888]:443") != std::string::npos);
 }
 
+TEST_CASE("an endpoint with very many ports still ends its line and does not run into the next", "[networktable]") {
+    std::vector<RawConnection> input;
+    for (uint16_t port = 1000; port < 1100; ++port) {
+        input.push_back(tcp(100, static_cast<uint16_t>(port + 10000), "9.9.9.9", port));
+    }
+    input.push_back(tcp(100, 60000, "8.8.8.8", 443));
+    const std::string text = formatNetworkTable(aggregateNetwork(input, {{100, "a.exe"}}));
+
+    const size_t endpoints = text.find("\nEndpoints\n");
+    REQUIRE(endpoints != std::string::npos);
+    const std::string tail = text.substr(endpoints);
+    CHECK(count(tail, "\n") == 4);  // Endpoints 앞의 빈 줄, "Endpoints", 끝점 두 줄
+    CHECK(tail.find("100 connections") != std::string::npos);
+    CHECK(tail.find("8.8.8.8") != std::string::npos);
+}
+
 TEST_CASE("an empty view prints only the summary line", "[networktable]") {
     const std::string text = formatNetworkTable(aggregateNetwork({}, {}));
 
