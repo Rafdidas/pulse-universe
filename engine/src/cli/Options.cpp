@@ -59,6 +59,7 @@ std::string usageText() {
         "Usage:\n"
         "  pulse-engine --dump  [--interval-ms N] [--iterations N] [--max-groups N]\n"
         "  pulse-engine --json  [--interval-ms N] [--max-groups N]\n"
+        "  pulse-engine --connections [--interval-ms N] [--iterations N]\n"
         "  pulse-engine --serve [--port N] [--web-root DIR] [--iterations N]\n"
         "                       [--interval-ms N] [--max-groups N] [--allow-origin URL]\n"
         "                       [--embedded-web]\n"
@@ -68,6 +69,7 @@ std::string usageText() {
         "  frontend built into the exe when there is no such folder, and opens the browser.\n"
         "\n"
         "  --dump            Print a process group table every interval.\n"
+        "  --connections     Print this PC's network connections per process every interval.\n"
         "  --json            Print one snapshot as contract-shaped JSON and exit.\n"
         "  --serve           Stream snapshots over WebSocket on 127.0.0.1.\n"
         "  --port N          Listen port for --serve (default 9000).\n"
@@ -99,6 +101,10 @@ ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::s
         const char* arg = argv[i];
         if (std::strcmp(arg, "--dump") == 0) {
             if (!setMode(Mode::Dump, arg)) {
+                return ParseResult::Error;
+            }
+        } else if (std::strcmp(arg, "--connections") == 0) {
+            if (!setMode(Mode::Connections, arg)) {
                 return ParseResult::Error;
             }
         } else if (std::strcmp(arg, "--json") == 0) {

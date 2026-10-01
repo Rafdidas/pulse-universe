@@ -4,16 +4,21 @@
 #include <cstdio>
 #include <exception>
 #include <filesystem>
+#include <chrono>
 #include <string>
 #include <system_error>
+#include <thread>
+#include <unordered_map>
 
 #include "app/EngineLoop.h"
 #include "app/ServeApp.h"
+#include "cli/NetworkTableFormatter.h"
 #include "cli/Options.h"
 #include "cli/TableFormatter.h"
 #include "network/Serializer.h"
 #include "platform/windows/EmbeddedAssets.h"
 #include "platform/windows/EtwSchedulerCollector.h"
+#include "platform/windows/WindowsConnectionScanner.h"
 #include "platform/windows/WindowsSystemReader.h"
 
 namespace {
@@ -73,6 +78,29 @@ int runDump(pulse::ISystemReader& reader, const pulse::Options& options) {
     if (!loop.error().empty()) {
         std::printf("sampling failed: %s\n", loop.error().c_str());
         return 1;
+    }
+    return 0;
+}
+
+// M10 스펙 5절. 이 PC 의 연결을 프로세스별로 간격마다 출력한다. 관리자 권한이 필요 없다.
+int runConnections(pulse::ISystemReader& reader, const pulse::Options& options) {
+    pulse::WindowsConnectionScanner scanner;
+    for (unsigned round = 0; options.iterations == 0 || round < options.iterations; ++round) {
+        if (round > 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(options.interval_ms));
+        }
+        const pulse::RawSample sample = reader.read();
+        std::unordered_map<uint32_t, std::string> names;
+        for (const pulse::RawProcess& process : sample.processes) {
+            names[process.pid] = process.name;
+        }
+        const pulse::ConnectionScan scan = scanner.scan();
+        if (!scan.error.empty()) {
+            std::fprintf(stderr, "connections: %s\n", scan.error.c_str());
+        }
+        const pulse::NetworkView view = pulse::aggregateNetwork(scan.connections, names);
+        std::printf("%s\n", pulse::formatNetworkTable(view).c_str());
+        std::fflush(stdout);
     }
     return 0;
 }
@@ -191,7 +219,9 @@ int main(int argc, char** argv) {
 
     // ETW 스펙 8절. auto 와 measured 는 실측을 시도한다. 결과는 stderr 에 한 줄 남긴다 —
     // --json 의 stdout 을 더럽히지 않는다.
-    const bool want_measured = options.mapping != pulse::Mapping::Estimated;
+    // --connections 는 스레드 매핑이 필요 없으니 ETW 를 켜지 않는다.
+    const bool want_measured =
+        options.mapping != pulse::Mapping::Estimated && options.mode != pulse::Mode::Connections;
     pulse::WindowsSystemReader reader(want_measured);
     if (want_measured) {
         if (reader.measuringThreads()) {
@@ -214,6 +244,8 @@ int main(int argc, char** argv) {
             return runJson(reader, options);
         case pulse::Mode::Serve:
             return runServe(reader, options, launched_by_default);
+        case pulse::Mode::Connections:
+            return runConnections(reader, options);
         case pulse::Mode::None:
             break;
     }
