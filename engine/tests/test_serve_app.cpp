@@ -258,8 +258,8 @@ TEST_CASE("the hello and the first snapshot describe the network block", "[serve
     FakeSystemReader reader(someSamples(), 4);
     FakeConnectionScanner scanner({});
     ServeConfig cfg;
-    cfg.iterations = 2;
-    cfg.interval_ms = 20;
+    cfg.iterations = 3;
+    cfg.interval_ms = 50;
     cfg.server.port = 0;
     cfg.network.scanner = &scanner;  // 트래픽 수집기는 없다
 

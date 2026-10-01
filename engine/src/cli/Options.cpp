@@ -80,10 +80,11 @@ std::string usageText() {
         "  --iterations N    Stop after N snapshots for --dump, --connections and --serve (default: run "
         "until Ctrl+C).\n"
         "  --max-groups N    Number of groups to show (default 40).\n"
-        "  --mapping M       Thread-to-core mapping. auto (default) measures with ETW when\n"
-        "                    run as administrator and estimates otherwise; estimated never\n"
-        "                    measures; measured exits if ETW cannot start. For --connections\n"
-        "                    it selects network traffic (down/up rates) the same way.\n";
+        "  --mapping M       ETW measurement. For --serve and --connections it covers both the\n"
+        "                    thread-to-core mapping and the network traffic rates. auto (default)\n"
+        "                    measures when run as administrator and estimates otherwise;\n"
+        "                    estimated never measures; measured exits if either ETW session\n"
+        "                    cannot start.\n";
 }
 
 ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::string& error) {

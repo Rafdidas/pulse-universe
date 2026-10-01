@@ -142,17 +142,36 @@ NetworkSnapshot buildNetworkSnapshot(const NetworkView& view, const std::vector<
                std::tie(b.group, b.remote, b.remote_port, b.local_port, b.proto, b.pid);
     };
     if (connections.size() > limits.max_connections) {
-        // 속도가 큰 순으로 남긴다. 같으면 결정적 순서.
-        std::sort(connections.begin(), connections.end(),
-                  [&](const NetworkConnectionOut& a, const NetworkConnectionOut& b) {
-                      const double ra = rateSum(a);
-                      const double rb = rateSum(b);
-                      if (ra != rb) {
-                          return ra > rb;
-                      }
-                      return deterministic(a, b);
-                  });
-        connections.resize(limits.max_connections);
+        // 속도가 큰 순으로 남긴다. 속도가 같으면(측정하지 못해 모두 null 일 때 포함) 끝점마다 한 개씩 먼저 남겨
+        // 연결이 하나도 안 남은 끝점이 생기지 않게 한다. 그다음은 결정적 순서.
+        std::sort(connections.begin(), connections.end(), deterministic);
+        std::map<std::string, uint32_t> seen;
+        std::vector<std::pair<uint32_t, size_t>> turn;  // 끝점 안에서의 몇 번째 연결인가
+        turn.reserve(connections.size());
+        for (size_t i = 0; i < connections.size(); ++i) {
+            turn.emplace_back(seen[connections[i].remote]++, i);
+        }
+        std::vector<size_t> order(connections.size());
+        for (size_t i = 0; i < order.size(); ++i) {
+            order[i] = i;
+        }
+        std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+            const double ra = rateSum(connections[a]);
+            const double rb = rateSum(connections[b]);
+            if (ra != rb) {
+                return ra > rb;
+            }
+            if (turn[a].first != turn[b].first) {
+                return turn[a].first < turn[b].first;
+            }
+            return a < b;  // connections 는 이미 결정적 순서다
+        });
+        std::vector<NetworkConnectionOut> cut;
+        cut.reserve(limits.max_connections);
+        for (size_t i = 0; i < limits.max_connections; ++i) {
+            cut.push_back(std::move(connections[order[i]]));
+        }
+        connections = std::move(cut);
     }
     std::sort(connections.begin(), connections.end(), deterministic);
 
