@@ -1,7 +1,7 @@
 # M11 — 네트워크 트래픽(바이트·속도) 수집 설계
 
 - 작성일: 2026-10-01
-- 상태: 초안 (사용자 검토 대기, 관리자 권한 시험 전)
+- 상태: 승인됨 (IPv4 는 관리자 시험으로 확인됨, IPv6 확인 대기 — 10절)
 - 선행: M10 연결 수집 (`main` e99e0c7), ETW 스레드 매핑 (`EtwSchedulerCollector`)
 - 범위: ETW `Microsoft-Windows-Kernel-Network` 로 연결(플로우)별 송수신 바이트를 수집해 업로드·다운로드 속도를 만들고, `--connections` 에서 확인한다. 관리자 권한이 없으면 속도를 "측정 불가"로 둔다. 스냅샷 계약·WebSocket(M12)과 지연 시간(latency)은 범위 밖이다.
 
@@ -12,7 +12,7 @@
 | D110 | 전용 ETW 세션 `PulseUniverse-Net` (일반 실시간 세션, 시스템 로거 아님)에 공급자 `Microsoft-Windows-Kernel-Network` ({7DD42A49-5329-4832-8DFD-43D979153A88}) 를 키워드 IPv4(0x10)·IPv6(0x20) 로 켠다. 소비는 별도 스레드의 `ProcessTrace` | 스레드 매핑 세션은 커널 시스템 로거라 일반 매니페스트 공급자를 섞기 어렵다. 세션을 나누면 한쪽 실패가 다른 쪽에 번지지 않는다 |
 | D111 | 이벤트는 TCP 송신·수신, UDP 송신·수신 (IPv4·IPv6) 네 종류만 쓴다. 페이로드에서 PID, 크기, 주소·포트 네 값을 읽어 **플로우 키** (프로토콜, PID, 정규화한 두 끝점)에 바이트를 누적한다 | 연결 목록(M10)과 같은 키로 맞출 수 있고, UDP 는 이 이벤트로만 원격 끝점을 알 수 있다 (D101) |
 | D112 | 플로우 키의 두 끝점은 정렬해서 저장한다 (방향 무관). 연결 목록과 맞출 때는 어느 쪽이 로컬인지 따지지 않고 정렬한 쌍으로 비교한다 | 수신 이벤트에서 `saddr`/`daddr` 가 어느 쪽인지 문서마다 달라 시험으로 확인한다 (6절). 정렬 키는 그 불확실성을 흡수한다 |
-| D113 | 수집기는 창 단위 `drain()` 으로 바이트를 내준다 (스레드 매핑과 같은 방식). 속도 = 창 동안 바이트 / 창 길이 (이벤트 시각 기준). 평활은 하지 않는다 (프런트엔드 몫) | 같은 패턴을 재사용한다. 하나의 값에 의미를 정해 둔다: 마지막 창의 평균 B/s |
+| D113 | 수집기는 창 단위 `drain()` 으로 바이트를 내준다 (스레드 매핑과 같은 방식). 속도 = 창 동안 바이트 / 창 길이. 창 길이는 `drain()` 호출 사이의 단조 시계 간격이고, `drain()` 은 창을 닫기 전에 ETW 버퍼를 강제로 흘려보낸다 (ETW 는 버퍼가 차거나 1 초 타이머에만 이벤트를 전달해 그대로는 창마다 0~2 개 묶음이 들쭉날쭉하기 때문이다). 평활은 하지 않는다 (프런트엔드 몫) | 같은 패턴을 재사용한다. 하나의 값에 의미를 정해 둔다: 마지막 창의 평균 B/s |
 | D114 | 실측 가능 여부는 `--mapping` 과 같은 규칙을 쓴다: `auto`(기본)는 관리자면 측정, 아니면 측정 없이 동작 / `estimated` 는 측정하지 않음 / `measured` 는 측정을 못 하면 종료 코드 1. `--connections` 가 이 옵션을 처음으로 사용한다 | 사용자가 정한 "ETW 실측, 관리자만". 스레드 매핑과 같은 사용 방식이라 설명이 하나로 끝난다 |
 | D115 | 관리자가 아니거나 세션이 실패하면 표의 속도 칸은 `-` 로 두고 요약 줄에 `traffic: not measured (<이유>)` 를 한 줄 낸다. 연결 목록·끝점 묶음은 그대로 나온다 | 권한이 없어도 M10 의 모든 정보는 보인다 |
 
@@ -23,8 +23,8 @@
 struct FlowKey {
     NetProtocol protocol = NetProtocol::Tcp;
     uint32_t pid = 0;
-    std::string ip_a; uint16_t port_a = 0;
-    std::string ip_b; uint16_t port_b = 0;
+    IpBytes ip_a; uint16_t port_a = 0;   // 16 바이트 주소 (IPv4 는 ::ffff:a.b.c.d)
+    IpBytes ip_b; uint16_t port_b = 0;
     bool operator<(const FlowKey&) const;   // 완전 순서
     bool operator==(const FlowKey&) const;
 };
@@ -54,18 +54,18 @@ public:
 
 - `static std::unique_ptr<EtwNetworkCollector> start(std::string& error)`: 소유권 뮤텍스 `Global\PulseUniverse-Net-Owner` (이미 있으면 "another pulse-engine is already measuring network traffic" 로 실패), 남은 세션 정리(`stopSessionByName`), `StartTrace`(일반 실시간 세션, 이름 `PulseUniverse-Net`), `EnableTraceEx2`(공급자, 키워드 0x30, 레벨 4), `OpenTrace`(실시간), 소비 스레드. 권한 부족은 `ETW network events need administrator rights`, 남은 세션 때문에 못 멈추면 스레드 매핑과 같은 안내.
 - 이벤트 콜백(`ProcessTrace` 스레드): 공급자 GUID 와 이벤트 ID 로 네 종류를 가려, 페이로드를 TDH 없이 고정 오프셋으로 읽는다 (5절의 배치). 알 수 없는 ID·짧은 페이로드는 버린다. 잠긴 구간은 맵 갱신 한 번이다.
-- `drain()`: 마지막 호출 이후의 누적을 `RawNetworkTraffic` 으로 돌려주고 비운다. 창 길이는 첫·마지막 이벤트 시각이 아니라 **drain 호출 사이의 단조 시계 간격**이다 (이벤트가 없는 창도 길이를 가진다 — 속도 0). 첫 호출은 창이 없으므로 nullopt.
+- `drain()`: 먼저 `ControlTrace(EVENT_TRACE_CONTROL_FLUSH)` 로 버퍼를 흘려보내고 소비 스레드가 처리할 시간(100 ms)을 둔 뒤, 마지막 호출 이후의 누적을 `RawNetworkTraffic` 으로 돌려주고 비운다. 창 길이는 첫·마지막 이벤트 시각이 아니라 **drain 호출 사이의 단조 시계 간격**이다 (이벤트가 없는 창도 길이를 가진다 — 속도 0). 첫 호출은 창이 없으므로 nullopt. `--connections` 는 세션을 연 뒤 0.5 초(공급자가 켜지는 시간) 기다리고 첫 drain 을 부른다.
 - 유실 경고: 스레드 매핑과 같이 `EventsLost`·`RealTimeBuffersLost` 가 늘면 10 초에 한 번 stderr 경고.
 - 종료: 소멸자가 세션을 멈추고, `main` 의 콘솔 핸들러가 이름으로 멈춘다 (`stopSessionByName`).
-- 버퍼: 16 KB × 8~32 개, 플러시 1 초 (스레드 매핑보다 작게 — 이벤트 한 건이 작다). 이벤트가 많아도 콜백은 맵 갱신뿐이다.
+- 버퍼: 64 KB × 16~64 개(최대 4 MB), 플러시 타이머 1 초. 시험에서 16 KB × 32 개는 1 KB 조각 5000 번 전송의 약 9 % 를 잃었다. 이벤트가 많아도 콜백은 맵 갱신뿐이다.
 
 ## 4. 집계기 확장 (`core/NetworkAggregator`)
 
 - `aggregateNetwork(connections, names, traffic)` — 세 번째 인자 `const std::optional<RawNetworkTraffic>&` (없으면 M10 과 같다).
 - 연결(`ConnectionView`)에 `std::optional<double> down_bps, up_bps` 를 더한다. 값은 TCP 연결의 (pid, 정렬한 로컬·원격 끝점) 키로 찾은 플로우의 `bytes_received / window`, `bytes_sent / window`. 창이 있는데 플로우가 없으면 0, 측정을 못 하면 nullopt.
-- UDP: 플로우가 있는 UDP 소켓은 `ConnectionView`(프로토콜 UDP, 상태 `-`) 로 연결에 더한다 (원격 끝점이 처음으로 보인다). 같은 PID 의 UDP 소켓 개수(`udp_sockets`)는 그대로 센다. 플로우 없는 UDP 소켓은 지금처럼 개수만 센다. 루프백·미지정 제외는 TCP 와 같은 규칙.
+- UDP: 플로우가 있는 UDP 소켓은 `ConnectionView`(프로토콜 UDP, 상태 `-`) 로 연결에 더한다 (원격 끝점이 처음으로 보인다). 같은 PID 의 UDP 소켓 개수(`udp_sockets`)는 그대로 센다. 플로우 없는 UDP 소켓은 지금처럼 개수만 센다. 루프백(요약의 `loopback` 에 센다)·미지정 제외는 TCP 와 같은 규칙. 플로우의 두 끝점 중 로컬은 그 PID 의 UDP 소켓에 (바인드 주소, 포트)가 맞는 쪽이다 (wildcard 소켓은 모든 주소에 맞는다). 양쪽이 다 맞으면(NTP 123 ↔ 123, mDNS 5353 ↔ 5353) 이 PC 의 로컬 주소(연결 목록의 로컬 주소들)인 쪽이 로컬이고, 그래도 가릴 수 없으면 추측하지 않고 그 플로우를 건너뛴다.
 - 끝점(`RemoteEndpoint`)과 프로세스(`ProcessNetwork`)에 합산 `down_bps`, `up_bps`. 연결 목록에 없는 TCP 플로우(세션 시작 전에 열린 연결의 늦은 이벤트, 이미 닫힌 연결)는 무시한다.
-- `NetworkSummary` 에 `std::optional<double> down_bps, up_bps` (전체 합)와 `traffic_measured` (bool) 를 더한다.
+- `NetworkSummary` 에 `bool traffic_measured` 와 `double down_bps, up_bps` (측정했을 때의 전체 합)를 더한다.
 - 합산 규칙: 속도 합은 연결 하나씩 더한다. 같은 플로우를 두 번 세지 않는다 (키가 유일).
 
 ## 5. 이벤트 배치 (시험으로 확인할 가정)
@@ -111,3 +111,15 @@ public:
 ## 9. 범위 밖
 
 스냅샷 계약·`capabilities.network_traffic`·WebSocket (M12), 지연 시간(RTT), 연결 생성·종료 이벤트, TCP ESTATS, 도메인·국가, 화면.
+
+## 10. 구현·시험 결과 (2026-10-01)
+
+시제품이 곧 구현이라 계획서를 따로 쓰지 않고 `feature/m11-traffic` 에서 바로 만들었다.
+
+| 항목 | 결과 |
+|---|---|
+| 일반 권한 | 엔진 테스트 280 케이스 중 273 통과, 7 건너뜀(ETW 관리자 전용), 경고 0. `--connections` 는 `traffic: not measured (ETW network events need administrator rights)` 를 낸다 |
+| 관리자 시험 (IPv4) | UAC 로 실행: 루프백 TCP 5 MB 를 1 KB·64 KB 조각으로 보내 송수신 모두 5 MB 이상, UDP 100 개(1 KB), 세션 정리 모두 통과. 이벤트 ID 10/11/42/43 과 PID·크기·주소·포트 오프셋(5절)이 맞음을 증명한다 |
+| 시험이 알려 준 것 | 16 KB × 32 버퍼는 1 KB 조각 5000 번 전송의 약 9 % 를 잃었다 → 64 KB × 64 로 늘림. 공급자를 켠 직후 잠시는 이벤트가 오지 않았다 → 0.5 초 대기. 첫 시험의 TCP 64 KB 조각은 첫 실행에서만 부족했고(7 개 분량) 기다림을 두고 다시 통과했다 |
+| 리뷰 반영 | 창을 닫기 전 ETW 버퍼 강제 플러시(속도의 들쭉날쭉 제거), UDP 로컬 쪽을 (바인드 주소, 포트)와 로컬 주소 집합으로 판별(NTP·mDNS 같은 같은 포트 통신), UDP 루프백 집계, 죽은 코드 제거, 핸들러 해제 |
+| 확인 대기 | IPv6 이벤트(26/27/58/59) 배치와, 플러시 후 짧은 대기(200 ms)로도 시험이 통과하는지는 관리자 실행이 필요하다. 실제 NIC 트래픽(`--connections --mapping measured`)도 사람이 한 번 본다 |
