@@ -1,7 +1,7 @@
 # M11 — 네트워크 트래픽(바이트·속도) 수집 설계
 
 - 작성일: 2026-10-01
-- 상태: 승인됨 (IPv4 는 관리자 시험으로 확인됨, IPv6 확인 대기 — 10절)
+- 상태: 승인됨 (IPv4·IPv6 모두 관리자 시험으로 확인됨 — 10절)
 - 선행: M10 연결 수집 (`main` e99e0c7), ETW 스레드 매핑 (`EtwSchedulerCollector`)
 - 범위: ETW `Microsoft-Windows-Kernel-Network` 로 연결(플로우)별 송수신 바이트를 수집해 업로드·다운로드 속도를 만들고, `--connections` 에서 확인한다. 관리자 권한이 없으면 속도를 "측정 불가"로 둔다. 스냅샷 계약·WebSocket(M12)과 지연 시간(latency)은 범위 밖이다.
 
@@ -54,7 +54,7 @@ public:
 
 - `static std::unique_ptr<EtwNetworkCollector> start(std::string& error)`: 소유권 뮤텍스 `Global\PulseUniverse-Net-Owner` (이미 있으면 "another pulse-engine is already measuring network traffic" 로 실패), 남은 세션 정리(`stopSessionByName`), `StartTrace`(일반 실시간 세션, 이름 `PulseUniverse-Net`), `EnableTraceEx2`(공급자, 키워드 0x30, 레벨 4), `OpenTrace`(실시간), 소비 스레드. 권한 부족은 `ETW network events need administrator rights`, 남은 세션 때문에 못 멈추면 스레드 매핑과 같은 안내.
 - 이벤트 콜백(`ProcessTrace` 스레드): 공급자 GUID 와 이벤트 ID 로 네 종류를 가려, 페이로드를 TDH 없이 고정 오프셋으로 읽는다 (5절의 배치). 알 수 없는 ID·짧은 페이로드는 버린다. 잠긴 구간은 맵 갱신 한 번이다.
-- `drain()`: 먼저 `ControlTrace(EVENT_TRACE_CONTROL_FLUSH)` 로 버퍼를 흘려보내고 소비 스레드가 처리할 시간(100 ms)을 둔 뒤, 마지막 호출 이후의 누적을 `RawNetworkTraffic` 으로 돌려주고 비운다. 창 길이는 첫·마지막 이벤트 시각이 아니라 **drain 호출 사이의 단조 시계 간격**이다 (이벤트가 없는 창도 길이를 가진다 — 속도 0). 첫 호출은 창이 없으므로 nullopt. `--connections` 는 세션을 연 뒤 0.5 초(공급자가 켜지는 시간) 기다리고 첫 drain 을 부른다.
+- `drain()`: 먼저 `ControlTrace(EVENT_TRACE_CONTROL_FLUSH)` 로 버퍼를 흘려보내고 소비 스레드가 처리할 시간(250 ms)을 둔 뒤, 마지막 호출 이후의 누적을 `RawNetworkTraffic` 으로 돌려주고 비운다. 창 길이는 첫·마지막 이벤트 시각이 아니라 **drain 호출 사이의 단조 시계 간격**이다 (이벤트가 없는 창도 길이를 가진다 — 속도 0). 첫 호출은 창이 없으므로 nullopt. `--connections` 는 세션을 연 뒤 0.5 초(공급자가 켜지는 시간) 기다리고 첫 drain 을 부른다.
 - 유실 경고: 스레드 매핑과 같이 `EventsLost`·`RealTimeBuffersLost` 가 늘면 10 초에 한 번 stderr 경고.
 - 종료: 소멸자가 세션을 멈추고, `main` 의 콘솔 핸들러가 이름으로 멈춘다 (`stopSessionByName`).
 - 버퍼: 64 KB × 16~64 개(최대 4 MB), 플러시 타이머 1 초. 시험에서 16 KB × 32 개는 1 KB 조각 5000 번 전송의 약 9 % 를 잃었다. 이벤트가 많아도 콜백은 맵 갱신뿐이다.
@@ -122,4 +122,6 @@ public:
 | 관리자 시험 (IPv4) | UAC 로 실행: 루프백 TCP 5 MB 를 1 KB·64 KB 조각으로 보내 송수신 모두 5 MB 이상, UDP 100 개(1 KB), 세션 정리 모두 통과. 이벤트 ID 10/11/42/43 과 PID·크기·주소·포트 오프셋(5절)이 맞음을 증명한다 |
 | 시험이 알려 준 것 | 16 KB × 32 버퍼는 1 KB 조각 5000 번 전송의 약 9 % 를 잃었다 → 64 KB × 64 로 늘림. 공급자를 켠 직후 잠시는 이벤트가 오지 않았다 → 0.5 초 대기. 첫 시험의 TCP 64 KB 조각은 첫 실행에서만 부족했고(7 개 분량) 기다림을 두고 다시 통과했다 |
 | 리뷰 반영 | 창을 닫기 전 ETW 버퍼 강제 플러시(속도의 들쭉날쭉 제거), UDP 로컬 쪽을 (바인드 주소, 포트)와 로컬 주소 집합으로 판별(NTP·mDNS 같은 같은 포트 통신), UDP 루프백 집계, 죽은 코드 제거, 핸들러 해제 |
-| 확인 대기 | IPv6 이벤트(26/27/58/59) 배치와, 플러시 후 짧은 대기(200 ms)로도 시험이 통과하는지는 관리자 실행이 필요하다. 실제 NIC 트래픽(`--connections --mapping measured`)도 사람이 한 번 본다 |
+| 관리자 시험 (IPv6) | UAC 로 실행: `::1` 루프백 TCP 1 MB 와 UDP 50 개의 송수신이 모두 세어졌다. IPv6 이벤트(26/27/58/59)의 배치(5절)가 맞다 |
+| 전달 지연 | 진단 시험: UDP 100 개를 보내고 50 ms 간격으로 drain 하면 0 → 47 KB(0.32 초) → 100 KB(0.49 초)로 모인다. 강제 플러시를 해도 이벤트는 소비자에게 0.3~0.5 초 늦게 닿는다. 그래서 값은 일정한 지연을 두고 같은 창으로 보고되고(정상 상태의 속도는 정확하다), 관리자 시험은 기대한 바이트가 모일 때까지(최대 5 초) 여러 번 drain 한다 |
+| 확인 대기 | 실제 NIC 트래픽(`--connections --mapping measured`)은 사람이 한 번 본다 (루프백만 시험했다) |

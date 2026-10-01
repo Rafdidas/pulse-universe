@@ -7,6 +7,7 @@
 #include <windows.h>
 
 #include <chrono>
+#include <map>
 #include <string>
 #include <thread>
 #include <vector>
@@ -54,6 +55,50 @@ RawFlowTraffic findFlow(const RawNetworkTraffic& traffic, NetProtocol protocol, 
         }
     }
     return RawFlowTraffic{};
+}
+
+struct Wanted {
+    FlowKey key;
+    uint64_t min_sent = 0;
+    uint64_t min_received = 0;
+};
+
+FlowKey loopbackKey(NetProtocol protocol, uint16_t port1, uint16_t port2, const IpBytes& address) {
+    return makeFlowKey(protocol, ::GetCurrentProcessId(), address, port1, address, port2);
+}
+
+// 여러 번 drain 해 합친다. 이벤트는 강제 플러시 뒤에도 수백 ms 늦게 도착하므로(진단 시험: 100 개 데이터그램이
+// 보낸 뒤 약 0.3~0.5 초에 모였다), 기대한 바이트가 모일 때까지 최대 5 초 기다린다.
+RawNetworkTraffic gather(EtwNetworkCollector& collector, const std::vector<Wanted>& wanted) {
+    std::map<FlowKey, RawFlowTraffic> merged;
+    RawNetworkTraffic total;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if (const std::optional<RawNetworkTraffic> traffic = collector.drain()) {
+            total.window_seconds += traffic->window_seconds;
+            for (const RawFlowTraffic& flow : traffic->flows) {
+                RawFlowTraffic& sum = merged[flow.key];
+                sum.key = flow.key;
+                sum.bytes_sent += flow.bytes_sent;
+                sum.bytes_received += flow.bytes_received;
+            }
+        }
+        bool done = true;
+        for (const Wanted& w : wanted) {
+            const auto it = merged.find(w.key);
+            if (it == merged.end() || it->second.bytes_sent < w.min_sent || it->second.bytes_received < w.min_received) {
+                done = false;
+            }
+        }
+        if (done || std::chrono::steady_clock::now() >= deadline) {
+            break;
+        }
+    }
+    for (auto& entry : merged) {
+        total.flows.push_back(entry.second);
+    }
+    return total;
 }
 
 }  // namespace
@@ -115,18 +160,14 @@ TEST_CASE("the ETW network collector counts the bytes of a loopback TCP transfer
         sent += static_cast<size_t>(n);
     }
     receiver.join();
-    // drain() 이 버퍼를 강제로 흘려보내므로 1 초 플러시를 기다릴 필요가 없다 (잠깐만 둔다).
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-    const std::optional<RawNetworkTraffic> traffic = collector->drain();
+    const RawNetworkTraffic traffic = gather(
+        *collector, {{loopbackKey(NetProtocol::Tcp, listener_port, client_port, loopbackBytes()), kTotal, kTotal}});
     ::closesocket(accepted);
     ::closesocket(client);
     ::closesocket(listener);
 
-    REQUIRE(traffic.has_value());
-    REQUIRE(traffic->window_seconds > 0.5);
-    const RawFlowTraffic flow = findFlow(*traffic, NetProtocol::Tcp, listener_port, client_port);
-    CAPTURE(traffic->flows.size(), flow.bytes_sent, flow.bytes_received);
+    const RawFlowTraffic flow = findFlow(traffic, NetProtocol::Tcp, listener_port, client_port);
+    CAPTURE(traffic.flows.size(), flow.bytes_sent, flow.bytes_received);
     CHECK(flow.bytes_sent >= kTotal);
     CHECK(flow.bytes_received >= kTotal);
 }
@@ -169,15 +210,14 @@ TEST_CASE("the ETW network collector counts loopback UDP datagrams when elevated
                          sizeof(receiver_address)) == kSize);
         REQUIRE(::recv(receiver, buffer.data(), kSize, 0) == kSize);
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-    const std::optional<RawNetworkTraffic> traffic = collector->drain();
+    const uint64_t expected = static_cast<uint64_t>(kDatagrams) * kSize;
+    const RawNetworkTraffic traffic = gather(
+        *collector, {{loopbackKey(NetProtocol::Udp, sender_port, receiver_port, loopbackBytes()), expected, expected}});
     ::closesocket(sender);
     ::closesocket(receiver);
 
-    REQUIRE(traffic.has_value());
-    const RawFlowTraffic flow = findFlow(*traffic, NetProtocol::Udp, sender_port, receiver_port);
-    CAPTURE(traffic->flows.size(), flow.bytes_sent, flow.bytes_received);
+    const RawFlowTraffic flow = findFlow(traffic, NetProtocol::Udp, sender_port, receiver_port);
+    CAPTURE(traffic.flows.size(), flow.bytes_sent, flow.bytes_received);
     CHECK(flow.bytes_sent >= static_cast<uint64_t>(kDatagrams) * kSize);
     CHECK(flow.bytes_received >= static_cast<uint64_t>(kDatagrams) * kSize);
 }
@@ -268,17 +308,17 @@ TEST_CASE("the ETW network collector counts IPv6 loopback TCP and UDP when eleva
                          sizeof(udp_target)) == 1024);
         REQUIRE(::recv(udp_receiver, buffer.data(), 1024, 0) == 1024);
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-    const std::optional<RawNetworkTraffic> traffic = collector->drain();
+    const RawNetworkTraffic traffic =
+        gather(*collector, {{loopbackKey(NetProtocol::Tcp, listener_port, client_port, loopback6), kTcpTotal, kTcpTotal},
+                            {loopbackKey(NetProtocol::Udp, udp_sender_port, udp_receiver_port, loopback6), 50u * 1024u,
+                             50u * 1024u}});
     for (const SOCKET socket : {accepted, client, listener, udp_receiver, udp_sender}) {
         ::closesocket(socket);
     }
-    REQUIRE(traffic.has_value());
 
     const auto find = [&](NetProtocol protocol, uint16_t p1, uint16_t p2) {
-        const FlowKey wanted = makeFlowKey(protocol, ::GetCurrentProcessId(), loopback6, p1, loopback6, p2);
-        for (const RawFlowTraffic& flow : traffic->flows) {
+        const FlowKey wanted = loopbackKey(protocol, p1, p2, loopback6);
+        for (const RawFlowTraffic& flow : traffic.flows) {
             if (flow.key == wanted) {
                 return flow;
             }
@@ -286,7 +326,7 @@ TEST_CASE("the ETW network collector counts IPv6 loopback TCP and UDP when eleva
         return RawFlowTraffic{};
     };
     const RawFlowTraffic tcp_flow = find(NetProtocol::Tcp, listener_port, client_port);
-    CAPTURE(traffic->flows.size(), tcp_flow.bytes_sent, tcp_flow.bytes_received);
+    CAPTURE(traffic.flows.size(), tcp_flow.bytes_sent, tcp_flow.bytes_received);
     CHECK(tcp_flow.bytes_sent >= kTcpTotal);
     CHECK(tcp_flow.bytes_received >= kTcpTotal);
     const RawFlowTraffic udp_flow = find(NetProtocol::Udp, udp_sender_port, udp_receiver_port);

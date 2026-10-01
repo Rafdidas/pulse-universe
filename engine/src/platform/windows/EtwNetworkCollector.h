@@ -62,6 +62,7 @@ private:
     unsigned long events_lost_ = 0;
     unsigned long buffers_lost_ = 0;
     int64_t last_warning_ms_ = 0;
+    bool flush_warned_ = false;
 };
 
 }  // namespace pulse
