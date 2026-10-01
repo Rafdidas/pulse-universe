@@ -24,6 +24,7 @@ add_executable(pulse-tests
   test_network_aggregator.cpp
   test_network_table.cpp
   test_network_traffic.cpp
+  test_network_snapshot.cpp
   test_etw_network.cpp
 )
 target_link_libraries(pulse-tests PRIVATE Catch2::Catch2WithMain pulse_core)

@@ -4,6 +4,7 @@
 #include <functional>
 #include <string>
 
+#include "app/EngineLoop.h"
 #include "network/ServerConfig.h"
 #include "platform/ISystemReader.h"
 
@@ -14,6 +15,8 @@ struct ServeConfig {
     unsigned iterations = 0;  // 0 이면 신호가 올 때까지
     std::size_t max_groups = 40;
     ServerConfig server;
+    // M12: 네트워크 정보 수집 의존성. 호출자가 소유한다 (runServe 보다 오래 산다).
+    NetworkSources network;
 };
 
 struct ServeResult {

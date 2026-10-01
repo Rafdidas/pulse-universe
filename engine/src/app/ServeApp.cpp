@@ -59,6 +59,7 @@ ServeResult runServe(ISystemReader& reader, const ServeConfig& cfg,
     hello.os = host.os;
     hello.elevated = host.elevated;
     hello.thread_mapping = host.thread_mapping;
+    hello.network_traffic = cfg.network.traffic != nullptr ? "measured" : "unavailable";
     hello.session = generateSessionId();
     server->setHello(std::make_shared<const std::string>(serializeHello(hello)));
 
@@ -67,10 +68,12 @@ ServeResult runServe(ISystemReader& reader, const ServeConfig& cfg,
     loop_cfg.iterations = cfg.iterations;
     loop_cfg.aggregator.filter.max_groups = cfg.max_groups;
 
-    EngineLoop loop(reader, loop_cfg, [&](const SystemSnapshot& snapshot) {
-        server->broadcast(
-            std::make_shared<const std::string>(serializeSnapshot(snapshot)));
-    });
+    EngineLoop loop(
+        reader, loop_cfg,
+        [&](const SystemSnapshot& snapshot) {
+            server->broadcast(std::make_shared<const std::string>(serializeSnapshot(snapshot)));
+        },
+        cfg.network);
 
     // Ctrl+C 로 종료한다. 신호는 io_context 에서 받고 샘플링 루프에 정지를 알린다.
     net::signal_set signals(ioc, SIGINT, SIGTERM);

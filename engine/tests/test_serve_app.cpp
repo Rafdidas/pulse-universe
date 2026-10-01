@@ -17,6 +17,7 @@
 #include "network/WebSocketServer.h"
 #include "platform/RawTypes.h"
 
+#include "fakes/FakeNetwork.h"
 #include "fakes/FakeSystemReader.h"
 
 using namespace pulse;
@@ -251,4 +252,32 @@ TEST_CASE("a client arriving after runServe has finished is refused cleanly", "[
     REQUIRE(result.exit_code == 0);
     REQUIRE(port.load() != 0);
     REQUIRE_THROWS(TestClient(port.load()));
+}
+
+TEST_CASE("the hello and the first snapshot describe the network block", "[serve][netsnapshot]") {
+    FakeSystemReader reader(someSamples(), 4);
+    FakeConnectionScanner scanner({});
+    ServeConfig cfg;
+    cfg.iterations = 2;
+    cfg.interval_ms = 20;
+    cfg.server.port = 0;
+    cfg.network.scanner = &scanner;  // 트래픽 수집기는 없다
+
+    std::atomic<unsigned short> port{0};
+    std::jthread server_thread([&] { runServe(reader, cfg, [&](unsigned short p) { port.store(p); }); });
+    while (port.load() == 0) {
+        std::this_thread::yield();
+    }
+    TestClient client(port.load());
+    const json::value hello = json::parse(client.read());
+    const json::value snapshot = json::parse(client.read());
+    client.close();
+    server_thread.join();
+
+    REQUIRE(hello.at("capabilities").at("network_traffic").as_string() == "unavailable");
+    REQUIRE(snapshot.at("type").as_string() == "snapshot");
+    REQUIRE(snapshot.at("network").at("traffic").as_string() == "unavailable");
+    REQUIRE(snapshot.at("network").at("endpoints").is_array());
+    REQUIRE(snapshot.at("network").at("summary").at("down_bps").is_null());
+    REQUIRE(scanner.scanCount() >= 1);
 }

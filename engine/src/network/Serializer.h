@@ -18,6 +18,9 @@ struct HelloInfo {
     // (HostInfo::thread_mapping). core/Snapshot.h 의 Flow::source 는 스냅샷마다의
     // 실제 출처다 — 수집기가 살아 있는 동안 두 값은 같다 (ETW 스펙 8절).
     std::string thread_mapping = "estimated";
+    // 엔진이 시작할 때 네트워크 트래픽 ETW 수집기가 돌았으면 "measured", 아니면 "unavailable"
+    // (SystemSnapshot::network.traffic 과 같은 값이다 - M12 스펙 D124).
+    std::string network_traffic = "unavailable";
     // 엔진 프로세스의 한 번의 실행을 식별한다. 재시작할 때마다 바뀐다.
     // 클라이언트는 이 값으로 재연결(같은 세션)과 재시작(다른 세션)을 구별한다.
     std::string session;

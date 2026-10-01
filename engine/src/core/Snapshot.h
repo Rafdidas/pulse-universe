@@ -77,6 +77,47 @@ struct SystemTotals {
     uint32_t thread_total = 0;
 };
 
+// M12 스펙 2절. 스냅샷의 network 블록. 속도는 바이트/초이고, 측정하지 못했으면 값이 없다 (직렬화하면 null).
+struct NetworkEndpointOut {
+    std::string ip;
+    bool is_private = false;
+    std::vector<uint16_t> ports;       // 오름차순, 중복 없음
+    uint32_t connections = 0;          // 포함된 연결 수
+    std::vector<std::string> groups;   // 연결된 그룹 key, 오름차순, 중복 없음
+    std::optional<double> down_bps;
+    std::optional<double> up_bps;
+};
+
+struct NetworkConnectionOut {
+    std::string group;  // ProcessGroup::key
+    uint32_t pid = 0;
+    std::string proto;  // "tcp" 또는 "udp"
+    uint16_t local_port = 0;
+    std::string remote;  // IP
+    uint16_t remote_port = 0;
+    std::string state;  // "established", "syn_sent" ... UDP 는 "none"
+    std::optional<double> down_bps;
+    std::optional<double> up_bps;
+};
+
+struct NetworkSummaryOut {
+    // 모든 프로세스 기준이다 (그룹에 속하지 않는 것 포함).
+    uint32_t connections = 0;
+    uint32_t established = 0;
+    uint32_t endpoints = 0;  // 상한으로 잘리기 전의 총수
+    uint32_t udp_sockets = 0;
+    std::optional<double> down_bps;
+    std::optional<double> up_bps;
+};
+
+struct NetworkSnapshot {
+    // "measured": 트래픽 수집기가 있다. "unavailable": 없다 (속도는 모두 null).
+    std::string traffic = "unavailable";
+    NetworkSummaryOut summary;
+    std::vector<NetworkEndpointOut> endpoints;
+    std::vector<NetworkConnectionOut> connections;
+};
+
 struct SystemSnapshot {
     uint64_t seq = 0;
     uint64_t t = 0;
@@ -86,6 +127,7 @@ struct SystemSnapshot {
     std::vector<Flow> flows;
     LifecycleDelta lifecycle;
     Ambient ambient;
+    NetworkSnapshot network;
 };
 
 }  // namespace pulse

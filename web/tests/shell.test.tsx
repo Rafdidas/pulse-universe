@@ -6,6 +6,7 @@ import type { Snapshot } from '../src/protocol/schema';
 import { Shell } from '../src/shell/Shell';
 import { toggledHash, viewFromHash } from '../src/shell/view';
 import { useSnapshotStore } from '../src/state/snapshotStore';
+import { emptyNetwork } from './fixtures/network';
 
 // jsdom 에는 WebGL 이 없다. 장면 자체는 자동 테스트 대상이 아니므로 (계약서 10절)
 // 여기서는 어느 화면이 선택되는지만 본다.
@@ -42,6 +43,7 @@ function minimalSnapshot(seq: number): Snapshot {
     flows: [],
     lifecycle: { spawned: [], terminated: [] },
     ambient: { service_proc_count: 0, service_mem_mb: 0 },
+    network: emptyNetwork,
   };
 }
 

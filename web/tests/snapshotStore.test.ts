@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { LIFECYCLE_LOG_LIMIT, useSnapshotStore } from '../src/state/snapshotStore';
 import { PROTOCOL_VERSION, type Snapshot } from '../src/protocol/schema';
+import { emptyNetwork } from './fixtures/network';
 
 function makeSnapshot(seq: number, overrides: Partial<Snapshot> = {}): Snapshot {
   return {
@@ -21,6 +22,7 @@ function makeSnapshot(seq: number, overrides: Partial<Snapshot> = {}): Snapshot 
     flows: [],
     lifecycle: { spawned: [], terminated: [] },
     ambient: { service_proc_count: 0, service_mem_mb: 0 },
+    network: emptyNetwork,
     ...overrides,
   };
 }

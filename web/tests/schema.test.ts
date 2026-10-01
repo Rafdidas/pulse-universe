@@ -13,7 +13,7 @@ function helloText(overrides: Record<string, unknown> = {}): string {
     v: PROTOCOL_VERSION,
     interval_ms: 1000,
     core_count: 28,
-    capabilities: { thread_mapping: 'estimated' },
+    capabilities: { thread_mapping: 'estimated', network_traffic: 'unavailable' },
     host: { os: 'Windows', elevated: false },
     session: 'abc123deadbeef01',
     ...overrides,
@@ -102,8 +102,106 @@ describe('hello schema', () => {
   });
 
   it('rejects a hello with an unknown thread mapping', () => {
-    const outcome = parseMessage(helloText({ capabilities: { thread_mapping: 'guessed' } }));
+    const outcome = parseMessage(
+      helloText({ capabilities: { thread_mapping: 'guessed', network_traffic: 'unavailable' } }),
+    );
 
     expect(outcome.kind).toBe('invalid');
+  });
+});
+
+describe('network block', () => {
+  it('exposes the endpoints and connections of a real payload', () => {
+    const snapshot = SnapshotSchema.parse(JSON.parse(fixtureText));
+
+    expect(snapshot.network.traffic).toBe('measured');
+    expect(snapshot.network.summary.endpoints).toBe(50);
+    expect(snapshot.network.endpoints).toHaveLength(3);
+    expect(snapshot.network.endpoints[0].ports).toEqual([443]);
+    expect(snapshot.network.endpoints[1].private).toBe(true);
+    expect(snapshot.network.connections).toHaveLength(4);
+    expect(snapshot.network.connections[2].proto).toBe('udp');
+  });
+
+  it('links every connection to a group that is in the snapshot', () => {
+    const snapshot = SnapshotSchema.parse(JSON.parse(fixtureText));
+    const keys = new Set(snapshot.groups.map((group) => group.key));
+
+    for (const connection of snapshot.network.connections) {
+      expect(keys.has(connection.group)).toBe(true);
+    }
+    for (const endpoint of snapshot.network.endpoints) {
+      for (const key of endpoint.groups) {
+        expect(keys.has(key)).toBe(true);
+      }
+    }
+  });
+
+  it('keeps an unmeasured rate (null) distinct from a measured zero', () => {
+    const base = JSON.parse(fixtureText);
+    base.network.connections[0].down_bps = 0;
+    base.network.connections[1].down_bps = null;
+
+    const snapshot = SnapshotSchema.parse(base);
+
+    expect(snapshot.network.connections[0].down_bps).toBe(0);
+    expect(snapshot.network.connections[1].down_bps).toBeNull();
+  });
+
+  it('rejects a payload without a network block', () => {
+    const broken = JSON.parse(fixtureText);
+    delete broken.network;
+
+    expect(parseMessage(JSON.stringify(broken)).kind).toBe('invalid');
+  });
+
+  it('rejects an unknown traffic state, protocol or wrong field types', () => {
+    const traffic = JSON.parse(fixtureText);
+    traffic.network.traffic = 'estimated';
+    expect(parseMessage(JSON.stringify(traffic)).kind).toBe('invalid');
+
+    const proto = JSON.parse(fixtureText);
+    proto.network.connections[0].proto = 'icmp';
+    expect(parseMessage(JSON.stringify(proto)).kind).toBe('invalid');
+
+    const ports = JSON.parse(fixtureText);
+    ports.network.endpoints[0].ports = '443';
+    expect(parseMessage(JSON.stringify(ports)).kind).toBe('invalid');
+
+    const rate = JSON.parse(fixtureText);
+    rate.network.summary.down_bps = '12';
+    expect(parseMessage(JSON.stringify(rate)).kind).toBe('invalid');
+  });
+
+  it('accepts the empty block of an engine without a scanner', () => {
+    const base = JSON.parse(fixtureText);
+    base.network = {
+      traffic: 'unavailable',
+      summary: { connections: 0, established: 0, endpoints: 0, udp_sockets: 0, down_bps: null, up_bps: null },
+      endpoints: [],
+      connections: [],
+    };
+
+    expect(parseMessage(JSON.stringify(base)).kind).toBe('message');
+  });
+});
+
+describe('network capability in hello', () => {
+  it('reads network_traffic', () => {
+    const outcome = parseMessage(helloText({ capabilities: { thread_mapping: 'estimated', network_traffic: 'measured' } }));
+
+    expect(outcome.kind).toBe('message');
+    if (outcome.kind === 'message' && outcome.message.type === 'hello') {
+      expect(outcome.message.capabilities.network_traffic).toBe('measured');
+    } else {
+      throw new Error('expected a hello message');
+    }
+  });
+
+  it('rejects an unknown network_traffic value or a missing one', () => {
+    expect(
+      parseMessage(helloText({ capabilities: { thread_mapping: 'estimated', network_traffic: 'estimated' } })).kind,
+    ).toBe('invalid');
+    expect(parseMessage(helloText({ capabilities: { thread_mapping: 'estimated' } })).kind).toBe('invalid');
   });
 });

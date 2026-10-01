@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { sample, type InterpolationInput } from '../src/state/interpolator';
 import { PROTOCOL_VERSION, type ProcessGroup, type Snapshot } from '../src/protocol/schema';
+import { emptyNetwork } from './fixtures/network';
 
 function makeGroup(overrides: Partial<ProcessGroup> = {}): ProcessGroup {
   return {
@@ -41,6 +42,7 @@ function makeSnapshot(seq: number, overrides: Partial<Snapshot> = {}): Snapshot 
     flows: [],
     lifecycle: { spawned: [], terminated: [] },
     ambient: { service_proc_count: 80, service_mem_mb: 1000 },
+    network: emptyNetwork,
     ...overrides,
   };
 }

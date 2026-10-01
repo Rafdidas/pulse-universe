@@ -200,6 +200,27 @@ int runServe(pulse::ISystemReader& reader, const pulse::Options& options, bool o
         cfg.server.assets = assets;
     }
 
+    // M12 스펙 D125·D126. 연결 목록은 항상 모으고(관리자 권한 불필요), 트래픽 ETW 는 --mapping 규칙을 따른다.
+    pulse::WindowsConnectionScanner scanner;
+    std::unique_ptr<pulse::EtwNetworkCollector> traffic;
+    if (options.mapping != pulse::Mapping::Estimated) {
+        std::string error;
+        traffic = pulse::EtwNetworkCollector::start(error);
+        if (traffic != nullptr) {
+            ::SetConsoleCtrlHandler(onNetworkConsoleControl, TRUE);
+            std::fprintf(stderr, "network traffic: measured (ETW)\n");
+            // 공급자를 켠 직후 잠시는 이벤트가 오지 않는다. 첫 창이 비지 않게 기다린 뒤 서버를 시작한다.
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        } else if (options.mapping == pulse::Mapping::Measured) {
+            std::fprintf(stderr, "network traffic: cannot measure - %s\n", error.c_str());
+            return 1;
+        } else {
+            std::fprintf(stderr, "network traffic: not measured - %s\n", error.c_str());
+        }
+    }
+    cfg.network.scanner = &scanner;
+    cfg.network.traffic = traffic.get();
+
     const bool has_web_root = !cfg.server.web_root.empty() || cfg.server.assets != nullptr;
     const pulse::ServeResult result =
         pulse::runServe(reader, cfg, [has_web_root, open_browser](unsigned short port) {
@@ -215,6 +236,10 @@ int runServe(pulse::ISystemReader& reader, const pulse::Options& options, bool o
             }
         });
 
+    if (traffic != nullptr) {
+        // 수집기가 사라진 뒤에 Ctrl+C 가 다른 엔진의 세션을 멈추지 않게 핸들러를 뺀다.
+        ::SetConsoleCtrlHandler(onNetworkConsoleControl, FALSE);
+    }
     if (!result.message.empty()) {
         std::fprintf(stderr, "%s\n", result.message.c_str());
         if (open_browser && result.exit_code != 0) {

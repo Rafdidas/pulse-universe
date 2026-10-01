@@ -6,6 +6,7 @@ import type { ProcessGroup, Snapshot } from '../src/protocol/schema';
 import { FocusPanel } from '../src/scene/FocusPanel';
 import { useFocusStore } from '../src/scene/focusStore';
 import { useSnapshotStore } from '../src/state/snapshotStore';
+import { emptyNetwork } from './fixtures/network';
 
 function group(): ProcessGroup {
   return {
@@ -38,6 +39,7 @@ function snapshot(groups: ProcessGroup[]): Snapshot {
     flows: [],
     lifecycle: { spawned: [], terminated: [] },
     ambient: { service_proc_count: 0, service_mem_mb: 0 },
+    network: emptyNetwork,
   };
 }
 
