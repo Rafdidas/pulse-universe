@@ -351,3 +351,41 @@ TEST_CASE("--embedded-web is refused with --web-root and without --serve", "[opt
     REQUIRE(parseOptions(3, dump, options, error) == ParseResult::Error);
     REQUIRE(error == "--embedded-web needs --serve");
 }
+
+TEST_CASE("--connections selects the connections mode and takes interval and iterations", "[options]") {
+    Options options;
+    std::string error;
+    const char* argv[] = {"pulse-engine", "--connections", "--interval-ms", "500", "--iterations", "3"};
+
+    REQUIRE(parseOptions(6, argv, options, error) == ParseResult::Ok);
+
+    REQUIRE(options.mode == Mode::Connections);
+    REQUIRE(options.interval_ms == 500);
+    REQUIRE(options.iterations == 3);
+}
+
+TEST_CASE("--connections cannot be combined with another mode", "[options]") {
+    Options options;
+    std::string error;
+
+    const char* with_dump[] = {"pulse-engine", "--connections", "--dump"};
+    REQUIRE(parseOptions(3, with_dump, options, error) == ParseResult::Error);
+    REQUIRE(error == "only one mode may be given, saw --dump");
+
+    const char* with_serve[] = {"pulse-engine", "--serve", "--connections"};
+    REQUIRE(parseOptions(3, with_serve, options, error) == ParseResult::Error);
+    REQUIRE(error == "only one mode may be given, saw --connections");
+}
+
+TEST_CASE("--connections accepts --max-groups and --mapping like the other modes", "[options]") {
+    Options options;
+    std::string error;
+    const char* argv[] = {"pulse-engine", "--connections", "--max-groups", "10", "--mapping", "estimated"};
+
+    REQUIRE(parseOptions(6, argv, options, error) == ParseResult::Ok);
+    REQUIRE(options.mode == Mode::Connections);
+}
+
+TEST_CASE("usage lists --connections", "[options]") {
+    REQUIRE(usageText().find("--connections") != std::string::npos);
+}

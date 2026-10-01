@@ -59,15 +59,17 @@ std::string usageText() {
         "Usage:\n"
         "  pulse-engine --dump  [--interval-ms N] [--iterations N] [--max-groups N]\n"
         "  pulse-engine --json  [--interval-ms N] [--max-groups N]\n"
+        "  pulse-engine --connections [--interval-ms N] [--iterations N]\n"
         "  pulse-engine --serve [--port N] [--web-root DIR] [--iterations N]\n"
         "                       [--interval-ms N] [--max-groups N] [--allow-origin URL]\n"
         "                       [--embedded-web]\n"
-        "  Every mode also takes [--mapping auto|estimated|measured].\n"
+        "  Every mode except --connections also takes [--mapping auto|estimated|measured].\n"
         "\n"
         "  With no arguments, pulse-engine serves the web/ folder next to the exe, or the\n"
         "  frontend built into the exe when there is no such folder, and opens the browser.\n"
         "\n"
         "  --dump            Print a process group table every interval.\n"
+        "  --connections     Print this PC's network connections per process every interval.\n"
         "  --json            Print one snapshot as contract-shaped JSON and exit.\n"
         "  --serve           Stream snapshots over WebSocket on 127.0.0.1.\n"
         "  --port N          Listen port for --serve (default 9000).\n"
@@ -75,7 +77,7 @@ std::string usageText() {
         "  --embedded-web    Serve the frontend built into this exe (release builds only).\n"
         "  --allow-origin V  Allow an additional Origin for --serve (repeatable).\n"
         "  --interval-ms N   Sampling interval in milliseconds (default 1000, minimum 1).\n"
-        "  --iterations N    Stop after N snapshots for --dump and --serve (default: run "
+        "  --iterations N    Stop after N snapshots for --dump, --connections and --serve (default: run "
         "until Ctrl+C).\n"
         "  --max-groups N    Number of groups to show (default 40).\n"
         "  --mapping M       Thread-to-core mapping. auto (default) measures with ETW when\n"
@@ -99,6 +101,10 @@ ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::s
         const char* arg = argv[i];
         if (std::strcmp(arg, "--dump") == 0) {
             if (!setMode(Mode::Dump, arg)) {
+                return ParseResult::Error;
+            }
+        } else if (std::strcmp(arg, "--connections") == 0) {
+            if (!setMode(Mode::Connections, arg)) {
                 return ParseResult::Error;
             }
         } else if (std::strcmp(arg, "--json") == 0) {

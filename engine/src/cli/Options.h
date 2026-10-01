@@ -6,7 +6,7 @@
 
 namespace pulse {
 
-enum class Mode { None, Dump, Json, Serve };
+enum class Mode { None, Dump, Json, Serve, Connections };
 
 // 스레드-코어 매핑 출처 (ETW 스펙 8절). Auto 는 실측을 시도하고 안 되면 추정한다.
 enum class Mapping { Auto, Estimated, Measured };

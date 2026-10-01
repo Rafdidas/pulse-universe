@@ -19,6 +19,8 @@ add_library(pulse_core
   src/core/FlowEstimator.cpp
   src/core/RunTimeTable.cpp
   src/core/MeasuredFlows.cpp
+  src/core/IpAddress.cpp
+  src/core/NetworkAggregator.cpp
   src/core/DataAggregator.cpp
   src/app/EngineLoop.cpp
   src/app/ServeApp.cpp
@@ -26,16 +28,18 @@ add_library(pulse_core
   src/platform/windows/EtwSchedulerCollector.cpp
   src/cli/TableFormatter.cpp
   src/cli/Options.cpp
+  src/cli/NetworkTableFormatter.cpp
   src/network/Serializer.cpp
   src/network/WebSocketServer.cpp
   src/network/StaticFiles.cpp
   src/network/AssetPack.cpp
   src/platform/windows/EmbeddedAssets.cpp
+  src/platform/windows/WindowsConnectionScanner.cpp
 )
 target_include_directories(pulse_core PUBLIC src)
 target_link_libraries(pulse_core PUBLIC Boost::json Boost::beast)
 if(WIN32)
-  target_link_libraries(pulse_core PUBLIC pdh psapi ws2_32 mswsock advapi32)
+  target_link_libraries(pulse_core PUBLIC pdh psapi ws2_32 mswsock advapi32 iphlpapi)
 endif()
 
 if(WIN32)
