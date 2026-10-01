@@ -19,6 +19,7 @@ add_executable(pulse-tests
   test_websocket_server.cpp
   test_serve_app.cpp
   test_static_files.cpp
+  test_asset_pack.cpp
 )
 target_link_libraries(pulse-tests PRIVATE Catch2::Catch2WithMain pulse_core)
 target_include_directories(pulse-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
