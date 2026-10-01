@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  # SignPath reads the job and downloads the uploaded exe through this token (only used when signing is on).
+  actions: read
 
 jobs:
   release:
@@ -83,6 +85,8 @@ jobs:
           artifact-configuration-slug: '${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}'
           github-artifact-id: '${{ steps.upload-unsigned.outputs.artifact-id }}'
           wait-for-completion: true
+          # Every release needs a manual approval in SignPath; the default wait is only 10 minutes.
+          wait-for-completion-timeout-in-seconds: 18000
           output-artifact-directory: dist-release/signed
 
       - name: Assemble the release files

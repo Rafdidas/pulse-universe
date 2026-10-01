@@ -79,6 +79,7 @@ function Invoke-Native {
 # administrator rights needed).
 function Test-EmbeddedWeb {
     param([string]$Exe)
+    if (-not (Test-Path (Join-Path $webDist 'assets'))) { throw 'web/dist/assets is missing; run -Phase Build first' }
     $probeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pulse-probe-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force $probeDir | Out-Null
     $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
@@ -183,7 +184,8 @@ if ($Phase -ne 'Assemble') {
     }
     Write-Host '==> static link check passed'
 
-    Test-EmbeddedWeb $exe
+    # "All" probes the exe once, in the Assemble part below.
+    if ($Phase -eq 'Build') { Test-EmbeddedWeb $exe }
 
     New-Item -ItemType Directory -Force (Split-Path -Parent $unsignedExe) | Out-Null
     Copy-Item $exe $unsignedExe -Force

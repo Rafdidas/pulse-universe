@@ -65,7 +65,7 @@ if(PULSE_WEB_PAK)
 endif()
 # exe 의 파일 속성(제품명·버전). 서명 서비스가 요구한다. 릴리스 빌드는 태그 버전을 넘긴다.
 set(PULSE_VERSION "0.0.0" CACHE STRING "Version stored in pulse-engine.exe's file properties (x.y.z)")
-if(NOT PULSE_VERSION MATCHES "^([0-9]+)\.([0-9]+)\.([0-9]+)$")
+if(NOT PULSE_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
   message(FATAL_ERROR "PULSE_VERSION must look like 1.2.3, got: ${PULSE_VERSION}")
 endif()
 if(WIN32)

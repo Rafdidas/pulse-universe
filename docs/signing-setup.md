@@ -13,8 +13,8 @@
 1. 프로젝트를 만든다. 슬러그를 적어 둔다 (예: `pulse-universe`).
 2. 아티팩트 설정을 만들고 `signpath/artifact-configuration.xml` 의 내용을 붙여 넣는다. 슬러그를 적어 둔다 (예: `initial`).
 3. 서명 정책 `release-signing` 을 만든다. 수동 승인(approval)을 켠다. 슬러그를 적어 둔다.
-4. 신뢰 빌드 시스템 `GitHub.com` 을 프로젝트에 연결한다 (기본 커넥터 `https://pipelineconnector.connectors.signpath.io/GitHub/GitHubCom`).
-5. SignPath GitHub 앱을 설치하고 이 저장소 접근을 허용한다 (빌드 출처 검증용).
+4. 신뢰 빌드 시스템 `GitHub.com` 을 프로젝트에 연결한다 (SignPath 화면이 기본으로 제안하는 GitHub.com 커넥터를 쓴다).
+5. SignPath GitHub 앱을 설치하고 이 저장소 접근을 허용한다 (SignPath 가 빌드의 감사 로그를 확인하는 데 쓴다).
 6. 사용자 설정에서 API 토큰을 만든다.
 
 ## 3. GitHub 쪽 (저장소 Settings → Secrets and variables → Actions)
@@ -26,7 +26,7 @@
 ## 4. 첫 서명 릴리스
 
 1. 태그를 푸시한다 (예: `git tag v0.3.0 && git push origin v0.3.0`).
-2. 워크플로가 서명 요청을 올리고 기다린다. SignPath 에서 요청을 확인하고 승인한다.
+2. 워크플로가 서명 요청을 올리고 최대 5 시간까지 기다린다. 그 안에 SignPath 에서 요청을 확인하고 승인한다. 늦으면 작업이 실패하므로 승인 뒤 워크플로를 다시 실행한다.
 3. 워크플로가 끝나면 Releases 의 `pulse-engine.exe` 속성 → 디지털 서명에서 게시자가 `SignPath Foundation` 인지 확인한다. 워크플로는 서명이 `Valid` 가 아니면 릴리스를 올리지 않는다.
 4. 워크플로가 서명본을 찾지 못하거나(`expected exactly one signed pulse-engine.exe`) 서명 단계가 실패하면 로그를 보고 `output-artifact-directory` 에 무엇이 내려왔는지 확인해 워크플로의 `Assemble` 단계를 고친다. 서명본의 폴더 구성은 첫 실제 실행에서 확인되는 부분이다.
 
