@@ -3,7 +3,7 @@
 
 // 천체 가장자리와 이름표 사이의 틈.
 export const LABEL_GAP = 4;
-// 겹침 판정에 이름표 상자마다 더하는 여유.
+// 겹침 판정에서 두 상자 사이에 두는 여유 (쌍마다 한 번 더한다).
 export const LABEL_PADDING = 2;
 
 export interface LabelInput {

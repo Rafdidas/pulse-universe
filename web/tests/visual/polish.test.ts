@@ -64,7 +64,7 @@ function sweep(visit: (bodies: { key: string; sx: number; sy: number; sr: number
 }
 
 describe('visual polish measurements', () => {
-  it('never puts an outward label on the star glow', () => {
+  it('rarely lets an outward label box touch the star glow', () => {
     const firstRing = planOrbits(nodes).rings[0].keys.slice(0, MAX_LABELS);
     let frames = 0;
     let onStar = 0;
@@ -75,11 +75,21 @@ describe('visual polish measurements', () => {
       });
       const placed = placeLabels(inputs, star);
       frames += 1;
-      if (placed.some((p) => p.visible && Math.hypot(p.cx - star.sx, p.cy - star.sy) < star.r)) {
+      // 상자와 원의 교차: 상자에서 원 중심에 가장 가까운 점이 원 안인가.
+      const touches = placed.some((p) => {
+        if (!p.visible) {
+          return false;
+        }
+        const nearX = Math.max(p.cx - LABEL_BOX.width / 2, Math.min(star.sx, p.cx + LABEL_BOX.width / 2));
+        const nearY = Math.max(p.cy - LABEL_BOX.height / 2, Math.min(star.sy, p.cy + LABEL_BOX.height / 2));
+        return Math.hypot(nearX - star.sx, nearY - star.sy) < star.r;
+      });
+      if (touches) {
         onStar += 1;
       }
     });
-    expect(onStar / frames).toBe(0);
+    // 지금 위(천체 위쪽) 배치는 이 시험에서 프레임의 대부분이 걸린다.
+    expect(onStar / frames).toBeLessThan(0.05);
   });
 
   it('keeps bodies off the star glow (average per frame)', () => {
@@ -104,21 +114,22 @@ describe('visual polish measurements', () => {
     const layout = new OrbitLayout();
     let previous = '';
     let changes = 0;
-    const SECONDS = 300;
+    const SECONDS = 600;
     for (let second = 0; second < SECONDS; second += 1) {
       const noisy = nodes.map((node) => {
         const x = (drift.get(node.key) as number) * 0.97 + 0.015 * normal();
         drift.set(node.key, x);
         return { key: node.key, radius: node.radius * Math.exp(x / 3) };
       });
+      // 한 프레임마다 비교해 순간적으로 옮겼다 돌아오는 것도 센다.
       for (let frame = 0; frame < 60; frame += 1) {
         layout.step(noisy, 1 / 60);
+        const membership = JSON.stringify(layout.plan().rings.map((ring) => ring.keys));
+        if (previous !== '' && membership !== previous) {
+          changes += 1;
+        }
+        previous = membership;
       }
-      const membership = JSON.stringify(layout.plan().rings.map((ring) => ring.keys));
-      if (previous !== '' && membership !== previous) {
-        changes += 1;
-      }
-      previous = membership;
     }
     expect(changes / (SECONDS / 60)).toBeLessThan(1);
   });

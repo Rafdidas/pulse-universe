@@ -58,7 +58,6 @@ export function BodyLabels() {
       perspective === null ? 0 : size.height / 2 / Math.tan((perspective * Math.PI) / 360);
 
     const inputs: LabelInput[] = [];
-    const worldPositions = new Map<string, { x: number; y: number; z: number }>();
     for (const key of next) {
       const slot = slots.get(key);
       if (slot === undefined || slot.anchor === null || slot.box === null) {
@@ -81,7 +80,6 @@ export function BodyLabels() {
         continue;
       }
       slot.anchor.position.set(position.x, position.y, position.z);
-      worldPositions.set(key, position);
 
       if (slot.box.textContent !== entry.value.name) {
         slot.box.textContent = entry.value.name;
@@ -90,8 +88,13 @@ export function BodyLabels() {
       let box = sizes.current.get(key);
       if (box === undefined) {
         slot.box.style.display = '';
-        box = { width: slot.box.offsetWidth || FALLBACK_WIDTH, height: slot.box.offsetHeight || FALLBACK_HEIGHT };
-        sizes.current.set(key, box);
+        const width = slot.box.offsetWidth;
+        const height = slot.box.offsetHeight;
+        box = { width: width || FALLBACK_WIDTH, height: height || FALLBACK_HEIGHT };
+        // 아직 레이아웃되지 않은 0 은 저장하지 않는다 (다음 프레임에 다시 잰다).
+        if (width > 0 && height > 0) {
+          sizes.current.set(key, box);
+        }
       }
 
       view.set(position.x, position.y, position.z).applyMatrix4(camera.matrixWorldInverse);
@@ -113,6 +116,31 @@ export function BodyLabels() {
       });
     }
 
+    // 목록에서 빠진 key 의 기억을 지운다. 다시 들어왔을 때 옛 표시 상태가 우선권을 갖지 않게.
+    const active = new Set(next);
+    for (const key of shown.current) {
+      if (!active.has(key)) {
+        shown.current.delete(key);
+      }
+    }
+    for (const key of sizes.current.keys()) {
+      if (!active.has(key)) {
+        sizes.current.delete(key);
+      }
+    }
+
+    // 별이 카메라 뒤에 있으면 방향을 알 수 없다. 이름표를 이번 프레임만 숨긴다.
+    view.set(0, 0, 0).applyMatrix4(camera.matrixWorldInverse);
+    if (view.z >= 0) {
+      for (const input of inputs) {
+        const slot = slots.get(input.key);
+        if (slot !== undefined && slot.box !== null) {
+          slot.box.style.display = 'none';
+        }
+        shown.current.delete(input.key);
+      }
+      return;
+    }
     world.set(0, 0, 0).project(camera);
     const star = { sx: (world.x * 0.5 + 0.5) * size.width, sy: (-world.y * 0.5 + 0.5) * size.height };
     const placements = placeLabels(inputs, star);
