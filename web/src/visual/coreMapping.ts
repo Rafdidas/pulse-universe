@@ -7,9 +7,9 @@ export function coreLoad(pct: number): number {
   return clamp01(pct / 100);
 }
 
-// 5.1 크기. 0.7 ~ 1.6.
+// 5.1 크기. 1.0 ~ 1.9. 한가한 코어(대부분)도 멀리서 읽히도록 최소를 키웠다 (화면 다듬기 D94).
 export function orbRadius(load: number): number {
-  return 0.7 + 0.9 * clamp01(load);
+  return 1.0 + 0.9 * clamp01(load);
 }
 
 // 5.2 일그러짐. 부하의 제곱에 비례한다 — 대기 코어(절반이 5% 미만)는 거의 매끈해야 한다.

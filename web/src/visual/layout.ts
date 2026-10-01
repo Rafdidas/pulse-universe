@@ -26,6 +26,9 @@ export const SETTLE_TAU = 0.5;
 // 자리로 옮겨 가면 순간적으로 초당 100 단위 넘게 휩쓸고 지나간다. 공전 자체(바깥 궤도에서
 // 초당 1 단위 안팎)는 이 상한에 걸리지 않는다.
 export const MAX_GLIDE_SPEED = 24;
+// 배치용 반지름은 실제 반지름이 이전 값에서 이 비율(10 %)을 넘게 벗어날 때만 바뀐다. 순위와 궤도
+// 용량을 이 값으로 정하므로, 메모리가 조금 흔들려서 궤도를 옮겨 다니지 않는다 (화면 다듬기 D92).
+export const RADIUS_DEADBAND = 0.1;
 // 자리 잡은 뒤 들어오는 key 는 가장 바깥 궤도의 천체보다 이만큼 바깥에서 나타난다.
 // 무리 안쪽에서 생기면 형성 연출이 다른 천체에 가려진다 (M5 스펙 8절).
 export const OUTSIDE_MARGIN = 4;
@@ -56,6 +59,8 @@ export class OrbitLayout {
   // 궤도 순번마다 누적한 공전각. 궤도 반지름이 바뀌어도 순번의 각은 이어진다.
   private readonly spins: number[] = [];
   private current: OrbitPlan = { rings: [], outerRadius: 0 };
+  // key 마다 계획에 쓰는 반지름 (RADIUS_DEADBAND 로 붙잡아 둔 값). 그려지는 크기는 실제 반지름이다.
+  private readonly layoutRadii = new Map<string, number>();
 
   get size(): number {
     return this.bodies.size;
@@ -75,7 +80,16 @@ export class OrbitLayout {
     const dt = Number.isFinite(dtSec) ? Math.min(Math.max(dtSec, 0), MAX_DT) : 0;
     const wasEmpty = this.bodies.size === 0;
     const previousOuter = this.current.outerRadius;
-    const plan = planOrbits(nodes);
+    const stable = nodes.map((node) => {
+      const held = this.layoutRadii.get(node.key);
+      const radius =
+        held !== undefined && held > 0 && Math.abs(node.radius / held - 1) <= RADIUS_DEADBAND
+          ? held
+          : node.radius;
+      this.layoutRadii.set(node.key, radius);
+      return { key: node.key, radius };
+    });
+    const plan = planOrbits(stable);
     this.current = plan;
 
     const follow = 1 - Math.exp(-dt / SETTLE_TAU);
@@ -112,6 +126,11 @@ export class OrbitLayout {
     for (const key of this.bodies.keys()) {
       if (!present.has(key)) {
         this.bodies.delete(key);
+      }
+    }
+    for (const key of this.layoutRadii.keys()) {
+      if (!present.has(key)) {
+        this.layoutRadii.delete(key);
       }
     }
   }

@@ -63,8 +63,8 @@ describe('coreMapping', () => {
   });
 
   it('matches the spec table', () => {
-    expect(orbRadius(0)).toBeCloseTo(0.7, 6);
-    expect(orbRadius(1)).toBeCloseTo(1.6, 6);
+    expect(orbRadius(0)).toBeCloseTo(1.0, 6);
+    expect(orbRadius(1)).toBeCloseTo(1.9, 6);
     expect(distortion(0.05)).toBeCloseTo(0.0407, 4);
     expect(distortion(0.5)).toBeCloseTo(0.11, 6);
     expect(distortion(0.9)).toBeCloseTo(0.2668, 4);

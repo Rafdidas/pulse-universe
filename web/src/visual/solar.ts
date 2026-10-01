@@ -6,7 +6,7 @@ import type { LayoutNode } from './layout';
 // 가운데 시스템 별의 반지름.
 export const STAR_RADIUS = 3.2;
 // 별 표면과 첫 궤도 천체 표면 사이의 틈.
-export const STAR_GAP = 3.0;
+export const STAR_GAP = 7.0;
 // 같은 궤도에서 이웃한 천체 표면 사이에 두는 호 길이.
 export const ARC_GAP = 1.2;
 // 궤도 둘레 가운데 천체가 차지해도 되는 비율. 나머지는 빈틈이다.
