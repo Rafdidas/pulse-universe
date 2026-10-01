@@ -3,8 +3,8 @@ import type { Vec3 } from './layout';
 // M6 스펙 4절. CPU 코어는 프로세스 무리를 두르는 XZ 평면 고리 위에 id 순서대로
 // 같은 간격으로 놓인다. 위치는 고정이다 — M7 의 flow 가 이 자리를 끝점으로 쓴다.
 
-// 태양계형 배치(스펙 D63): 가장 바깥 궤도의 천체(기본 40 그룹에서 끝 약 27)보다 바깥이다.
-export const RING_MIN_RADIUS = 34;
+// 태양계형 배치(스펙 D63): 가장 바깥 궤도의 천체(기본 40 그룹에서 끝 약 31)보다 바깥이다.
+export const RING_MIN_RADIUS = 38;
 // 고리 둘레 위 이웃 코어 사이의 간격. 코어가 많으면 고리가 넓어져 Orb 가 겹치지 않는다.
 export const ORB_SPACING = 4.5;
 

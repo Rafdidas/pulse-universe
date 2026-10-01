@@ -7,6 +7,7 @@ import {
   MAX_DT,
   OUTSIDE_MARGIN,
   OrbitLayout,
+  RADIUS_DEADBAND,
   SETTLE_TAU,
   floatOffset,
   floatingPosition,
@@ -250,5 +251,64 @@ describe('floatingPosition', () => {
 
   it('returns undefined for an unknown key', () => {
     expect(floatingPosition(new OrbitLayout(), 'nope', 0)).toBeUndefined();
+  });
+});
+
+describe('OrbitLayout radius deadband', () => {
+  function membership(layout: OrbitLayout): string {
+    return JSON.stringify(layout.plan().rings.map((ring) => ring.keys));
+  }
+
+  it('does not move bodies between orbits while radii wobble inside the deadband', () => {
+    const layout = new OrbitLayout();
+    layout.step(nodes, FRAME);
+    const before = membership(layout);
+    const firstRadii = layout.plan().rings.map((ring) => ring.radius);
+
+    for (let t = 0; t < 600; t += 1) {
+      const wobbled = nodes.map((node, i) => ({
+        key: node.key,
+        radius: node.radius * (1 + 0.09 * Math.sin(t * 0.3 + i)),
+      }));
+      layout.step(wobbled, FRAME);
+      expect(membership(layout)).toBe(before);
+    }
+    // 계획에 쓰는 반지름이 붙잡혀 있으므로 궤도 반지름도 그대로다.
+    expect(layout.plan().rings.map((ring) => ring.radius)).toEqual(firstRadii);
+  });
+
+  it('follows the real radius once it leaves the deadband', () => {
+    const layout = new OrbitLayout();
+    layout.step(nodes, FRAME);
+    const target = nodes[0];
+    const grown = nodes.map((node) =>
+      node.key === target.key ? { ...node, radius: node.radius * (1 + RADIUS_DEADBAND + 0.02) } : node,
+    );
+    layout.step(grown, FRAME);
+    expect(layout.plan()).toEqual(planOrbits(grown));
+  });
+
+  it('starts new keys at their real radius and forgets removed ones', () => {
+    const layout = new OrbitLayout();
+    layout.step(nodes, FRAME);
+    layout.step(nodes.slice(1), FRAME);
+    // 지워진 key 가 다시 들어올 때 예전의 붙잡힌 값이 아니라 지금의 실제 반지름으로 시작한다.
+    const comeback = [{ key: nodes[0].key, radius: nodes[0].radius * 1.05 }, ...nodes.slice(1)];
+    layout.step(comeback, FRAME);
+    expect(layout.plan()).toEqual(planOrbits(comeback));
+  });
+
+  it('is deterministic for identical inputs', () => {
+    const a = new OrbitLayout();
+    const b = new OrbitLayout();
+    for (let t = 0; t < 120; t += 1) {
+      const wobbled = nodes.map((node, i) => ({ key: node.key, radius: node.radius * (1 + 0.15 * Math.sin(t * 0.2 + i)) }));
+      a.step(wobbled, FRAME);
+      b.step(wobbled, FRAME);
+    }
+    expect(a.plan()).toEqual(b.plan());
+    for (const node of nodes) {
+      expect(a.position(node.key)).toEqual(b.position(node.key));
+    }
   });
 });
