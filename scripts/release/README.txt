@@ -7,6 +7,10 @@ Run
 ---
 1. Double-click "Start Pulse Universe.bat" (or pulse-engine.exe).
    A console window opens and your browser shows the universe at http://127.0.0.1:9000/.
+   The page is built into pulse-engine.exe, so the exe also works alone in any folder. If a "web"
+   folder sits next to the exe, that folder is used instead (handy for trying your own build).
+   If you extract a new version over an old folder, an old "web" folder next to the exe would win
+   over the built-in page, so delete that "web" folder first.
 2. Press Ctrl+C in the console window to stop.
 
 For measured thread-to-core lines, double-click "Start Pulse Universe (Admin).bat" and accept the
@@ -16,9 +20,10 @@ rights everything still works; the lines are estimated (drawn fainter) and a few
 Windows SmartScreen
 -------------------
 The program is not code-signed, so Windows may say "Windows protected your PC" the first time.
-Choose "More info" and then "Run anyway". The download page lists a .sha256 file; you can compare it
-with the zip you downloaded:
+Choose "More info" and then "Run anyway". The download page lists a .sha256 file for both the exe and
+the zip; you can compare it with the file you downloaded:
     Get-FileHash pulse-universe-*-win-x64.zip -Algorithm SHA256
+    Get-FileHash pulse-engine.exe -Algorithm SHA256
 
 Keys in the browser
 -------------------

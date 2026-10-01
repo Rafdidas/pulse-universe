@@ -1,8 +1,11 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 namespace pulse {
+
+class AssetPack;
 
 // resolveWebPath 의 결과 상태.
 //
@@ -39,6 +42,26 @@ struct WebPath {
 // HTTP 요청 대상을 web_root 아래의 실제 파일 경로로 바꾼다.
 // 각 상태의 의미는 WebPathStatus 주석을 보라.
 WebPath resolveWebPath(const std::string& web_root, const std::string& target);
+
+// 내장 pak 에서 찾은 결과 (스펙 4절).
+//  - Found:     path 는 실제로 찾은 키 ("/index.html" 등), data 는 pak 버퍼를 가리킨다.
+//  - Forbidden: 요청 대상의 모양이 틀렸거나 ".." 세그먼트가 있다. 403 으로 답한다.
+//  - NotFound:  없는 경로이고 index.html 도 없다. 404 로 답한다.
+enum class PackLookupStatus {
+    Found,
+    Forbidden,
+    NotFound,
+};
+
+struct PackAsset {
+    PackLookupStatus status = PackLookupStatus::NotFound;
+    std::string path;       // Found 일 때만 의미가 있다
+    std::string_view data;  // Found 일 때만 의미가 있다
+};
+
+// HTTP 요청 대상을 pak 안의 자산으로 바꾼다. 쿼리·프래그먼트는 뗀다. "/" 는 "/index.html".
+// 없는 경로(와 ':' 가 든 경로)는 SPA 폴백으로 "/index.html" 을 돌려준다.
+PackAsset lookupPackAsset(const AssetPack& pack, const std::string& target);
 
 // 확장자로 Content-Type 을 고른다. 모르는 확장자는 application/octet-stream.
 std::string mimeTypeFor(const std::string& path);

@@ -19,7 +19,7 @@
 
 ## 다운로드해서 실행 (빌드 도구 필요 없음)
 
-[Releases](https://github.com/Rafdidas/pulse-universe/releases) 에서 `pulse-universe-vX.Y.Z-win-x64.zip` 을 받아 풀고 `Start Pulse Universe.bat` (또는 `pulse-engine.exe`)을 더블클릭하면 브라우저에 화면이 뜬다. 관리자 권한이 필요한 실측 흐름은 `Start Pulse Universe (Admin).bat` (UAC 창에서 '아니오'를 누르면 아무것도 뜨지 않는다). 서명되지 않은 프로그램이라 처음에는 Windows 가 경고할 수 있다 — zip 안의 `README.txt` 에 대처법이 있다. 아래는 소스에서 직접 빌드하는 방법이다.
+[Releases](https://github.com/Rafdidas/pulse-universe/releases) 에서 `pulse-engine.exe` 하나만 받아 더블클릭하면 브라우저에 화면이 뜬다 (화면이 exe 안에 들어 있다). 더블클릭 실행용 `.bat` 과 안내 `README.txt` 가 필요하면 `pulse-universe-vX.Y.Z-win-x64.zip` 을 받아 푼다. 관리자 권한이 필요한 실측 흐름은 zip 의 `Start Pulse Universe (Admin).bat` 이다 (UAC 창에서 '아니오'를 누르면 아무것도 뜨지 않는다). exe 옆에 `web/` 폴더(빌드한 `web/dist`)를 두면 내장 화면 대신 그 폴더가 쓰인다. 예전 버전 zip 을 푼 폴더에 새 exe 를 덮어쓸 때는 남아 있는 `web/` 폴더를 지운다. 서명되지 않은 프로그램이라 처음에는 Windows 가 경고할 수 있다 — zip 안의 `README.txt` 에 대처법이 있다. 아래는 소스에서 직접 빌드하는 방법이다.
 
 ## 가장 빠른 실행 (소스에서)
 
@@ -132,7 +132,7 @@ GPU 가 느리면 해상도(dpr)를 자동으로 낮춘다.
 
 ## 릴리스 만들기
 
-`scripts/package.ps1 -Version 0.1.0` 이 프런트엔드를 빌드하고, 엔진을 정적 링크(외부 DLL·Visual C++ 재배포 패키지 필요 없음)로 빌드해, `dist-release/` 에 zip 과 `.sha256` 을 만든다. `v0.1.0` 같은 태그를 푸시하면 GitHub Actions 가 같은 스크립트로 릴리스를 올린다. 푸시와 PR 마다 `CI` 워크플로가 웹·엔진 테스트를 돌린다.
+`scripts/package.ps1 -Version 0.1.0` 이 프런트엔드를 빌드하고 `scripts/make-pak.ps1` 로 `web.pak` 으로 묶은 뒤, 엔진을 정적 링크(외부 DLL·Visual C++ 재배포 패키지 필요 없음)로 빌드하며 그 pak 을 exe 에 내장한다. `dist-release/` 에 `pulse-engine.exe`, zip, 각각의 `.sha256` 이 나오고, 스크립트 끝에서 exe 만으로 화면이 서빙되는지 확인한다. `v0.1.0` 같은 태그를 푸시하면 GitHub Actions 가 같은 스크립트로 이 네 파일을 릴리스에 올린다. 푸시와 PR 마다 `CI` 워크플로가 웹·엔진 테스트를 돌린다. 내장 없이 개발할 때는 지금처럼 `--serve --web-root web/dist` 를 쓴다.
 
 ## 테스트
 

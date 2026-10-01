@@ -13,6 +13,7 @@
 #include <system_error>
 #include <utility>
 
+#include "network/AssetPack.h"
 #include "network/StaticFiles.h"
 
 namespace pulse {
@@ -93,7 +94,7 @@ private:
         }
 
         if (!websocket::is_upgrade(request_)) {
-            if (server_.cfg_.web_root.empty()) {
+            if (server_.cfg_.web_root.empty() && server_.cfg_.assets == nullptr) {
                 // 아무 응답 없이 끊으면 브라우저로 주소를 열어본 개발자가 빈 화면만 본다.
                 sendSimple(http::status::upgrade_required,
                            "this endpoint speaks websocket only", "text/plain");
@@ -248,8 +249,29 @@ private:
                           });
     }
 
+    // 내장 pak 에서 응답한다. 없으면 index.html 로 대체한다 (SPA 라우팅).
+    void servePack(const AssetPack& pack) {
+        const std::string target = std::string(request_.target());
+        const PackAsset asset = lookupPackAsset(pack, target);
+        if (asset.status == PackLookupStatus::Forbidden) {
+            std::fprintf(stderr, "refused path outside the web root: %s\n", target.c_str());
+            sendSimple(http::status::forbidden, "forbidden", "text/plain");
+            return;
+        }
+        if (asset.status == PackLookupStatus::NotFound) {
+            sendSimple(http::status::not_found, "not found", "text/plain");
+            return;
+        }
+        sendSimple(http::status::ok, std::string(asset.data), mimeTypeFor(asset.path),
+                   /*allow_header=*/{}, asset.path == "/index.html");
+    }
+
     // web_root 아래의 파일로 응답한다. 없으면 index.html 로 대체한다 (SPA 라우팅).
     void serveStatic() {
+        if (server_.cfg_.assets != nullptr) {
+            servePack(*server_.cfg_.assets);
+            return;
+        }
         const std::string& root = server_.cfg_.web_root;
         const std::string target = std::string(request_.target());
 

@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <string_view>
 #include <system_error>
+
+#include "network/AssetPack.h"
 
 namespace pulse {
 namespace {
@@ -96,6 +99,42 @@ WebPath resolveWebPath(const std::string& web_root, const std::string& target) {
     }
 
     return WebPath{WebPathStatus::Ok, real_target.string()};
+}
+
+PackAsset lookupPackAsset(const AssetPack& pack, const std::string& target) {
+    std::string path = target.substr(0, target.find_first_of("?#"));
+
+    if (path.empty() || path.front() != '/' || path.find('\\') != std::string::npos) {
+        return PackAsset{PackLookupStatus::Forbidden, {}, {}};
+    }
+    // pak 에서 ".." 는 뜻이 없다. 탈출 시도로 보고 거절한다.
+    std::size_t start = 1;
+    while (start <= path.size()) {
+        const std::size_t end = path.find('/', start);
+        const std::string_view segment =
+            std::string_view(path).substr(start, end == std::string::npos ? end : end - start);
+        if (segment == "..") {
+            return PackAsset{PackLookupStatus::Forbidden, {}, {}};
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+
+    if (path == "/") {
+        path = "/index.html";
+    }
+    // ':' 는 대체 데이터 스트림 구문이다. 폴더 모드처럼 없는 파일로 보고 앱을 돌려준다.
+    if (path.find(':') == std::string::npos) {
+        if (const auto data = pack.find(path)) {
+            return PackAsset{PackLookupStatus::Found, path, *data};
+        }
+    }
+    if (const auto index = pack.find("/index.html")) {
+        return PackAsset{PackLookupStatus::Found, "/index.html", *index};
+    }
+    return PackAsset{PackLookupStatus::NotFound, {}, {}};
 }
 
 std::string mimeTypeFor(const std::string& path) {

@@ -35,13 +35,19 @@ bool parseUnsigned(const char* text, unsigned& out) {
 
 }  // namespace
 
-bool applyDefaultLaunch(Options& out, const std::string& web_root, bool web_root_exists) {
-    if (!web_root_exists || web_root.empty()) {
+bool applyDefaultLaunch(Options& out, const std::string& web_root, bool web_root_exists,
+                        bool has_embedded) {
+    const bool folder = web_root_exists && !web_root.empty();
+    if (!folder && !has_embedded) {
         return false;
     }
     Options launch;
     launch.mode = Mode::Serve;
-    launch.web_root = web_root;
+    if (folder) {
+        launch.web_root = web_root;
+    } else {
+        launch.use_embedded_web = true;
+    }
     out = launch;
     return true;
 }
@@ -55,16 +61,18 @@ std::string usageText() {
         "  pulse-engine --json  [--interval-ms N] [--max-groups N]\n"
         "  pulse-engine --serve [--port N] [--web-root DIR] [--iterations N]\n"
         "                       [--interval-ms N] [--max-groups N] [--allow-origin URL]\n"
+        "                       [--embedded-web]\n"
         "  Every mode also takes [--mapping auto|estimated|measured].\n"
         "\n"
-        "  With no arguments, pulse-engine serves the web/ folder next to the exe and opens\n"
-        "  the browser (when that folder exists).\n"
+        "  With no arguments, pulse-engine serves the web/ folder next to the exe, or the\n"
+        "  frontend built into the exe when there is no such folder, and opens the browser.\n"
         "\n"
         "  --dump            Print a process group table every interval.\n"
         "  --json            Print one snapshot as contract-shaped JSON and exit.\n"
         "  --serve           Stream snapshots over WebSocket on 127.0.0.1.\n"
         "  --port N          Listen port for --serve (default 9000).\n"
         "  --web-root DIR    Serve the built frontend from DIR (default: websocket only).\n"
+        "  --embedded-web    Serve the frontend built into this exe (release builds only).\n"
         "  --allow-origin V  Allow an additional Origin for --serve (repeatable).\n"
         "  --interval-ms N   Sampling interval in milliseconds (default 1000, minimum 1).\n"
         "  --iterations N    Stop after N snapshots for --dump and --serve (default: run "
@@ -119,6 +127,8 @@ ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::s
                 error = "invalid --web-root";
                 return ParseResult::Error;
             }
+        } else if (std::strcmp(arg, "--embedded-web") == 0) {
+            parsed.use_embedded_web = true;
         } else if (std::strcmp(arg, "--allow-origin") == 0) {
             if (i + 1 >= argc) {
                 error = "invalid --allow-origin";
@@ -174,6 +184,17 @@ ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::s
     if (parsed.mode == Mode::Json && parsed.iterations != 0) {
         error = "--iterations cannot be combined with --json";
         return ParseResult::Error;
+    }
+
+    if (parsed.use_embedded_web) {
+        if (parsed.mode != Mode::Serve) {
+            error = "--embedded-web needs --serve";
+            return ParseResult::Error;
+        }
+        if (!parsed.web_root.empty()) {
+            error = "--embedded-web cannot be combined with --web-root";
+            return ParseResult::Error;
+        }
     }
 
     out = parsed;

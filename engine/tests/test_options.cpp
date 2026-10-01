@@ -274,21 +274,46 @@ TEST_CASE("mapping rejects unknown or missing values", "[options]") {
 TEST_CASE("the default launch serves the web folder with the usual defaults", "[options]") {
     Options options;
 
-    REQUIRE(applyDefaultLaunch(options, "C:\\app\\web", true));
+    REQUIRE(applyDefaultLaunch(options, "C:\\app\\web", true, false));
 
     REQUIRE(options.mode == Mode::Serve);
     REQUIRE(options.web_root == "C:\\app\\web");
+    REQUIRE_FALSE(options.use_embedded_web);
     REQUIRE(options.port == 9000);
     REQUIRE(options.interval_ms == 1000);
     REQUIRE(options.mapping == Mapping::Auto);
 }
 
-TEST_CASE("the default launch leaves the options alone without a web folder", "[options]") {
+TEST_CASE("the web folder beats the embedded assets", "[options]") {
+    Options options;
+
+    REQUIRE(applyDefaultLaunch(options, "C:\\app\\web", true, true));
+
+    REQUIRE(options.web_root == "C:\\app\\web");
+    REQUIRE_FALSE(options.use_embedded_web);
+}
+
+TEST_CASE("the default launch falls back to the embedded assets without a web folder",
+          "[options]") {
+    Options missing;
+    REQUIRE(applyDefaultLaunch(missing, "C:\\app\\web", false, true));
+    REQUIRE(missing.mode == Mode::Serve);
+    REQUIRE(missing.use_embedded_web);
+    REQUIRE(missing.web_root.empty());
+
+    Options empty_path;
+    REQUIRE(applyDefaultLaunch(empty_path, "", true, true));
+    REQUIRE(empty_path.use_embedded_web);
+    REQUIRE(empty_path.web_root.empty());
+}
+
+TEST_CASE("the default launch leaves the options alone with neither folder nor embedded assets",
+          "[options]") {
     Options options;
     options.port = 1234;
 
-    REQUIRE_FALSE(applyDefaultLaunch(options, "C:\\app\\web", false));
-    REQUIRE_FALSE(applyDefaultLaunch(options, "", true));
+    REQUIRE_FALSE(applyDefaultLaunch(options, "C:\\app\\web", false, false));
+    REQUIRE_FALSE(applyDefaultLaunch(options, "", true, false));
 
     REQUIRE(options.mode == Mode::None);
     REQUIRE(options.port == 1234);
@@ -296,4 +321,33 @@ TEST_CASE("the default launch leaves the options alone without a web folder", "[
 
 TEST_CASE("usage mentions the no-argument launch", "[options]") {
     REQUIRE(usageText().find("With no arguments") != std::string::npos);
+}
+
+TEST_CASE("usage mentions the embedded web assets", "[options]") {
+    REQUIRE(usageText().find("--embedded-web") != std::string::npos);
+}
+
+TEST_CASE("--embedded-web selects the embedded assets for --serve", "[options]") {
+    Options options;
+    std::string error;
+    const char* argv[] = {"pulse-engine", "--serve", "--embedded-web"};
+
+    REQUIRE(parseOptions(3, argv, options, error) == ParseResult::Ok);
+
+    REQUIRE(options.mode == Mode::Serve);
+    REQUIRE(options.use_embedded_web);
+    REQUIRE(options.web_root.empty());
+}
+
+TEST_CASE("--embedded-web is refused with --web-root and without --serve", "[options]") {
+    Options options;
+    std::string error;
+
+    const char* both[] = {"pulse-engine", "--serve", "--embedded-web", "--web-root", "web"};
+    REQUIRE(parseOptions(5, both, options, error) == ParseResult::Error);
+    REQUIRE(error == "--embedded-web cannot be combined with --web-root");
+
+    const char* dump[] = {"pulse-engine", "--dump", "--embedded-web"};
+    REQUIRE(parseOptions(3, dump, options, error) == ParseResult::Error);
+    REQUIRE(error == "--embedded-web needs --serve");
 }
