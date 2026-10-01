@@ -115,8 +115,8 @@ TEST_CASE("the ETW network collector counts the bytes of a loopback TCP transfer
         sent += static_cast<size_t>(n);
     }
     receiver.join();
-    // 이벤트는 버퍼 플러시(1 초)마다 전달된다. 넉넉히 기다린다.
-    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+    // drain() 이 버퍼를 강제로 흘려보내므로 1 초 플러시를 기다릴 필요가 없다 (잠깐만 둔다).
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     const std::optional<RawNetworkTraffic> traffic = collector->drain();
     ::closesocket(accepted);
@@ -124,7 +124,7 @@ TEST_CASE("the ETW network collector counts the bytes of a loopback TCP transfer
     ::closesocket(listener);
 
     REQUIRE(traffic.has_value());
-    REQUIRE(traffic->window_seconds > 1.0);
+    REQUIRE(traffic->window_seconds > 0.5);
     const RawFlowTraffic flow = findFlow(*traffic, NetProtocol::Tcp, listener_port, client_port);
     CAPTURE(traffic->flows.size(), flow.bytes_sent, flow.bytes_received);
     CHECK(flow.bytes_sent >= kTotal);
@@ -169,7 +169,7 @@ TEST_CASE("the ETW network collector counts loopback UDP datagrams when elevated
                          sizeof(receiver_address)) == kSize);
         REQUIRE(::recv(receiver, buffer.data(), kSize, 0) == kSize);
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     const std::optional<RawNetworkTraffic> traffic = collector->drain();
     ::closesocket(sender);
@@ -268,7 +268,7 @@ TEST_CASE("the ETW network collector counts IPv6 loopback TCP and UDP when eleva
                          sizeof(udp_target)) == 1024);
         REQUIRE(::recv(udp_receiver, buffer.data(), 1024, 0) == 1024);
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     const std::optional<RawNetworkTraffic> traffic = collector->drain();
     for (const SOCKET socket : {accepted, client, listener, udp_receiver, udp_sender}) {

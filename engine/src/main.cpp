@@ -113,8 +113,9 @@ int runConnections(pulse::ISystemReader& reader, const pulse::Options& options) 
             traffic_note = error;
         }
     }
-    // 수집기의 첫 drain 은 창의 시작일 뿐이다. 버려서 시작 시점을 맞춘다.
+    // 공급자를 켠 직후 잠시는 이벤트가 오지 않는다. 기다린 뒤 첫 drain 으로 창을 연다 (첫 drain 은 시작일 뿐이다).
     if (traffic != nullptr) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
         traffic->drain();
     }
 
@@ -142,6 +143,10 @@ int runConnections(pulse::ISystemReader& reader, const pulse::Options& options) 
         const pulse::NetworkView view = pulse::aggregateNetwork(scan.connections, names, window);
         std::printf("%s\n", pulse::formatNetworkTable(view, traffic_note).c_str());
         std::fflush(stdout);
+    }
+    if (traffic != nullptr) {
+        // 수집기가 사라진 뒤에 Ctrl+C 가 다른 엔진의 세션을 멈추지 않게 핸들러를 뺀다.
+        ::SetConsoleCtrlHandler(onNetworkConsoleControl, FALSE);
     }
     return 0;
 }

@@ -45,6 +45,22 @@ bool isMappedV4(const IpBytes& b) {
     return b[10] == 0xff && b[11] == 0xff;
 }
 
+// 프로세스의 UDP 소켓 하나. wildcard 는 0.0.0.0 / :: 에 바인드된 소켓이다 (모든 주소에 맞는다).
+struct UdpSocket {
+    IpBytes ip{};
+    bool wildcard = true;
+    uint16_t port = 0;
+};
+
+bool matchesSocket(const std::vector<UdpSocket>& sockets, const IpBytes& ip, uint16_t port) {
+    for (const UdpSocket& socket : sockets) {
+        if (socket.port == port && (socket.wildcard || socket.ip == ip)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // 창 동안의 바이트를 초당 속도로 바꾼다. 창 길이가 0 이하면 0.
 double rateOf(uint64_t bytes, double window_seconds) {
     return window_seconds > 0.0 ? static_cast<double>(bytes) / window_seconds : 0.0;
@@ -85,7 +101,6 @@ NetworkView aggregateNetwork(const std::vector<RawConnection>& connections,
     const double window = traffic.has_value() ? traffic->window_seconds : 0.0;
 
     std::map<FlowKey, const RawFlowTraffic*> flows;
-    std::set<FlowKey> used;
     if (traffic.has_value()) {
         for (const RawFlowTraffic& flow : traffic->flows) {
             flows[flow.key] = &flow;
@@ -94,14 +109,29 @@ NetworkView aggregateNetwork(const std::vector<RawConnection>& connections,
 
     std::map<uint32_t, ProcessBuilder> by_pid;
     std::map<std::string, EndpointBuilder> endpoints;
-    // UDP 플로우에서 어느 끝점이 로컬인지 가리려고 프로세스별 UDP 로컬 포트를 모은다.
-    std::map<uint32_t, std::set<uint16_t>> udp_ports;
+    // UDP 플로우에서 어느 끝점이 로컬인지 가리려고 프로세스별 UDP 소켓(포트·바인드 주소)과
+    // 이 PC 의 로컬 주소 집합을 모은다 (같은 포트끼리 통신하는 NTP·mDNS 도 가려낸다).
+    std::map<uint32_t, std::vector<UdpSocket>> udp_sockets;
+    std::set<IpBytes> local_ips;
+    for (const RawConnection& raw : connections) {
+        const std::optional<IpAddress> local = parseIp(raw.local_ip);
+        if (local.has_value() && !local->isUnspecified()) {
+            local_ips.insert(local->bytes);
+        }
+    }
 
     for (const RawConnection& raw : connections) {
         if (raw.protocol == NetProtocol::Udp) {
             by_pid[raw.pid].view.udp_sockets += 1;
             view.summary.udp_sockets += 1;
-            udp_ports[raw.pid].insert(raw.local_port);
+            const std::optional<IpAddress> bound = parseIp(raw.local_ip);
+            UdpSocket socket;
+            socket.port = raw.local_port;
+            socket.wildcard = !bound.has_value() || bound->isUnspecified();
+            if (bound.has_value()) {
+                socket.ip = bound->bytes;
+            }
+            udp_sockets[raw.pid].push_back(socket);
             continue;
         }
 
@@ -141,7 +171,6 @@ NetworkView aggregateNetwork(const std::vector<RawConnection>& connections,
                 if (found != flows.end()) {
                     connection.down_bps = rateOf(found->second->bytes_received, window);
                     connection.up_bps = rateOf(found->second->bytes_sent, window);
-                    used.insert(key);
                 }
             }
         }
@@ -150,20 +179,28 @@ NetworkView aggregateNetwork(const std::vector<RawConnection>& connections,
 
     // UDP 플로우: 연결 목록에는 원격이 없으므로 ETW 이벤트로만 끝점이 보인다.
     for (const auto& [key, flow] : flows) {
-        if (key.protocol != NetProtocol::Udp || used.count(key) > 0) {
+        if (key.protocol != NetProtocol::Udp) {
             continue;
         }
-        const auto ports = udp_ports.find(key.pid);
-        if (ports == udp_ports.end()) {
+        const auto sockets = udp_sockets.find(key.pid);
+        if (sockets == udp_sockets.end()) {
             continue;  // 이 프로세스의 UDP 소켓이 목록에 없다 (이미 닫힘)
         }
-        // 포트가 이 프로세스의 UDP 소켓 포트인 쪽이 로컬이다.
-        const bool a_local = ports->second.count(key.port_a) > 0;
-        const bool b_local = ports->second.count(key.port_b) > 0;
-        if (!a_local && !b_local) {
+        // 끝점의 (주소, 포트)가 이 프로세스의 UDP 소켓에 맞는 쪽이 로컬이다. 포트가 같은 쪽이 둘이면
+        // (NTP 123 <-> 123 등) 이 PC 의 로컬 주소인 쪽을 고른다. 그래도 가릴 수 없으면 추측하지 않고 건너뛴다.
+        const bool a_local = matchesSocket(sockets->second, key.ip_a, key.port_a);
+        const bool b_local = matchesSocket(sockets->second, key.ip_b, key.port_b);
+        bool local_is_a = a_local;
+        if (a_local && b_local) {
+            const bool a_known = local_ips.count(key.ip_a) > 0;
+            const bool b_known = local_ips.count(key.ip_b) > 0;
+            if (a_known == b_known) {
+                continue;
+            }
+            local_is_a = a_known;
+        } else if (!a_local && !b_local) {
             continue;
         }
-        const bool local_is_a = a_local;
         const IpBytes& remote_bytes = local_is_a ? key.ip_b : key.ip_a;
         const IpBytes& local_bytes = local_is_a ? key.ip_a : key.ip_b;
         const uint16_t remote_port = local_is_a ? key.port_b : key.port_a;
@@ -175,7 +212,8 @@ NetworkView aggregateNetwork(const std::vector<RawConnection>& connections,
             continue;
         }
         if (remote.isLoopback()) {
-            continue;  // 외부 공간에는 나가는 연결만 둔다 (스펙 D103)
+            view.summary.loopback += 1;  // 외부 공간에는 나가는 연결만 둔다 (스펙 D103). TCP 와 같이 센다.
+            continue;
         }
         ConnectionView connection;
         connection.protocol = NetProtocol::Udp;

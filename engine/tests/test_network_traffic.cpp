@@ -409,3 +409,65 @@ TEST_CASE("UDP flow lines say UDP", "[networktable]") {
     CHECK(text.find("  UDP  192.168.0.10:5353") != std::string::npos);
     CHECK(text.find("8.8.4.4:53") != std::string::npos);
 }
+
+TEST_CASE("a UDP flow between two equal ports picks the PC's own address as local", "[network][traffic]") {
+    // NTP: 이 PC 의 123 번 포트 <-> 서버의 123 번 포트. 서버 주소(40.x)가 사전순으로 앞이어도 로컬이 아니다.
+    RawNetworkTraffic traffic;
+    traffic.window_seconds = 1.0;
+    traffic.flows.push_back(flow(NetProtocol::Udp, 100, v4(192, 168, 1, 10), 123, v4(40, 119, 6, 228), 123, 48, 48));
+
+    // 이 PC 의 주소는 다른 연결(TCP)의 로컬 주소로 알 수 있다. 소켓은 0.0.0.0 에 바인드되어 있다.
+    const NetworkView view =
+        aggregateNetwork({udpSocket(100, 123), tcp(100, "192.168.1.10", 50000, "1.1.1.1", 443)}, kNames, traffic);
+
+    const auto chrome = std::find_if(view.processes.begin(), view.processes.end(), [](const ProcessNetwork& p) { return p.pid == 100; });
+    REQUIRE(chrome != view.processes.end());
+    const auto ntp = std::find_if(chrome->connections.begin(), chrome->connections.end(),
+                                  [](const ConnectionView& c) { return c.protocol == NetProtocol::Udp; });
+    REQUIRE(ntp != chrome->connections.end());
+    CHECK(ntp->local_ip == "192.168.1.10");
+    CHECK(ntp->remote_ip == "40.119.6.228");
+    const auto server = std::find_if(view.endpoints.begin(), view.endpoints.end(),
+                                     [](const RemoteEndpoint& e) { return e.ip == "40.119.6.228"; });
+    REQUIRE(server != view.endpoints.end());
+    CHECK_FALSE(server->is_private);
+    const auto own = std::find_if(view.endpoints.begin(), view.endpoints.end(),
+                                  [](const RemoteEndpoint& e) { return e.ip == "192.168.1.10"; });
+    CHECK(own == view.endpoints.end());
+}
+
+TEST_CASE("a socket bound to a specific address identifies the local side by address and port", "[network][traffic]") {
+    RawConnection bound = udpSocket(100, 5353);
+    bound.local_ip = "192.168.1.10";
+    RawNetworkTraffic traffic;
+    traffic.window_seconds = 1.0;
+    traffic.flows.push_back(flow(NetProtocol::Udp, 100, v4(192, 168, 1, 10), 5353, v4(192, 168, 1, 20), 5353, 10, 10));
+
+    const NetworkView view = aggregateNetwork({bound}, kNames, traffic);
+
+    REQUIRE(view.endpoints.size() == 1);
+    CHECK(view.endpoints[0].ip == "192.168.1.20");
+}
+
+TEST_CASE("a UDP flow whose local side cannot be told is skipped rather than guessed", "[network][traffic]") {
+    RawNetworkTraffic traffic;
+    traffic.window_seconds = 1.0;
+    traffic.flows.push_back(flow(NetProtocol::Udp, 100, v4(192, 168, 1, 10), 123, v4(40, 119, 6, 228), 123, 48, 48));
+
+    // 로컬 주소를 알려 주는 다른 연결이 없고 소켓은 wildcard: 어느 쪽이 로컬인지 알 수 없다.
+    const NetworkView view = aggregateNetwork({udpSocket(100, 123)}, kNames, traffic);
+
+    CHECK(view.summary.connections == 0);
+    CHECK(view.endpoints.empty());
+}
+
+TEST_CASE("a UDP loopback flow is counted as loopback like TCP", "[network][traffic]") {
+    RawNetworkTraffic traffic;
+    traffic.window_seconds = 1.0;
+    traffic.flows.push_back(flow(NetProtocol::Udp, 100, v4(127, 0, 0, 1), 6000, v4(127, 0, 0, 1), 7000, 10, 10));
+
+    const NetworkView view = aggregateNetwork({udpSocket(100, 6000)}, kNames, traffic);
+
+    CHECK(view.summary.loopback == 1);
+    CHECK(view.summary.connections == 0);
+}

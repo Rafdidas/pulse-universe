@@ -33,6 +33,8 @@ constexpr ULONG kMinBuffers = 16;
 constexpr ULONG kMaxBuffers = 64;
 // 이벤트가 적을 때도 1초 안에 전달되게 한다.
 constexpr ULONG kFlushSeconds = 1;
+// drain() 이 버퍼를 강제로 흘려보낸 뒤 소비 스레드가 그 이벤트를 처리하도록 기다리는 시간.
+constexpr int kFlushSettleMs = 100;
 
 // 세션 소유권을 나타내는 이름 붙은 뮤텍스. 살아 있는 다른 엔진의 세션을 멈추지 않게 한다.
 constexpr const wchar_t* kOwnerMutexName = L"Global\\PulseUniverse-Net-Owner";
@@ -191,6 +193,14 @@ std::optional<RawNetworkTraffic> EtwNetworkCollector::drain() {
         return std::nullopt;
     }
     warnIfEventsLost();
+
+    // 이벤트는 버퍼가 차거나 1 초 타이머가 돌 때만 전달된다. 그대로 두면 창마다 0 개 또는 2 개의 플러시 묶음이
+    // 들어 속도가 들쭉날쭉하다 (리뷰). 창을 닫기 전에 강제로 흘려보내 지금까지의 이벤트가 이 창에 들어오게 한다.
+    {
+        std::vector<unsigned char> props = makeProperties();
+        ::ControlTraceW(session_, nullptr, asProperties(props), EVENT_TRACE_CONTROL_FLUSH);
+        std::this_thread::sleep_for(std::chrono::milliseconds(kFlushSettleMs));
+    }
 
     const auto now = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> lock(mutex_);
