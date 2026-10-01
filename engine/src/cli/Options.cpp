@@ -63,7 +63,7 @@ std::string usageText() {
         "  pulse-engine --serve [--port N] [--web-root DIR] [--iterations N]\n"
         "                       [--interval-ms N] [--max-groups N] [--allow-origin URL]\n"
         "                       [--embedded-web]\n"
-        "  Every mode except --connections also takes [--mapping auto|estimated|measured].\n"
+        "  Every mode also takes [--mapping auto|estimated|measured].\n"
         "\n"
         "  With no arguments, pulse-engine serves the web/ folder next to the exe, or the\n"
         "  frontend built into the exe when there is no such folder, and opens the browser.\n"
@@ -82,7 +82,8 @@ std::string usageText() {
         "  --max-groups N    Number of groups to show (default 40).\n"
         "  --mapping M       Thread-to-core mapping. auto (default) measures with ETW when\n"
         "                    run as administrator and estimates otherwise; estimated never\n"
-        "                    measures; measured exits if ETW cannot start.\n";
+        "                    measures; measured exits if ETW cannot start. For --connections\n"
+        "                    it selects network traffic (down/up rates) the same way.\n";
 }
 
 ParseResult parseOptions(int argc, const char* const* argv, Options& out, std::string& error) {

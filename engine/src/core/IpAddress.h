@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace pulse {
@@ -22,5 +23,12 @@ struct IpAddress {
 // "192.168.0.10", "fe80::1%12", "::ffff:127.0.0.1", "2001:db8::1" 을 푼다. 형식이 틀리면 nullopt.
 // IPv6 의 '%scope' 접미사는 버린다.
 std::optional<IpAddress> parseIp(std::string_view text);
+
+// 16 바이트와 "원래 IPv6 였는가" 로 주소를 만든다. ETW 이벤트의 주소를 문자열로 바꿀 때 쓴다.
+IpAddress makeIpAddress(const std::array<uint8_t, 16>& bytes, bool v6);
+
+// 사람이 읽는 문자열. IPv4 는 점 표기, IPv6 는 RFC 5952 (가장 긴 0 구간을 "::" 로, 소문자, 앞의 0 생략),
+// IPv4-mapped IPv6 는 "::ffff:a.b.c.d". OS 의 InetNtop 과 같은 모양이다.
+std::string formatIp(const IpAddress& address);
 
 }  // namespace pulse

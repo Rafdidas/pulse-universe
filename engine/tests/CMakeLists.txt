@@ -23,6 +23,8 @@ add_executable(pulse-tests
   test_connection_scanner.cpp
   test_network_aggregator.cpp
   test_network_table.cpp
+  test_network_traffic.cpp
+  test_etw_network.cpp
 )
 target_link_libraries(pulse-tests PRIVATE Catch2::Catch2WithMain pulse_core)
 target_include_directories(pulse-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

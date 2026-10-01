@@ -165,6 +165,75 @@ bool IpAddress::isPrivate() const {
     return (bytes[0] & 0xfe) == 0xfc || (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80);
 }
 
+IpAddress makeIpAddress(const std::array<uint8_t, 16>& bytes, bool v6) {
+    IpAddress address;
+    address.bytes = bytes;
+    address.v6 = v6;
+    return address;
+}
+
+std::string formatIp(const IpAddress& address) {
+    const auto dotted = [&address] {
+        return std::to_string(address.bytes[12]) + "." + std::to_string(address.bytes[13]) + "." +
+               std::to_string(address.bytes[14]) + "." + std::to_string(address.bytes[15]);
+    };
+    if (!address.v6) {
+        return dotted();
+    }
+    if (isMapped(address.bytes)) {
+        return "::ffff:" + dotted();
+    }
+
+    uint16_t groups[8];
+    for (size_t i = 0; i < 8; ++i) {
+        groups[i] = static_cast<uint16_t>((address.bytes[2 * i] << 8) | address.bytes[2 * i + 1]);
+    }
+    // 가장 긴 0 구간(길이 2 이상, 같으면 앞쪽)을 "::" 로 줄인다.
+    size_t best_start = 0;
+    size_t best_length = 0;
+    for (size_t i = 0; i < 8;) {
+        if (groups[i] != 0) {
+            ++i;
+            continue;
+        }
+        size_t j = i;
+        while (j < 8 && groups[j] == 0) {
+            ++j;
+        }
+        if (j - i > best_length) {
+            best_start = i;
+            best_length = j - i;
+        }
+        i = j;
+    }
+    if (best_length < 2) {
+        best_length = 0;
+    }
+
+    static const char kHex[] = "0123456789abcdef";
+    std::string text;
+    for (size_t i = 0; i < 8; ++i) {
+        if (best_length > 0 && i == best_start) {
+            text += "::";
+            i += best_length - 1;
+            continue;
+        }
+        if (!text.empty() && text.back() != ':') {
+            text += ':';
+        }
+        char group[5];
+        size_t digits = 0;
+        for (int shift = 12; shift >= 0; shift -= 4) {
+            const unsigned nibble = (groups[i] >> shift) & 0xf;
+            if (digits > 0 || nibble != 0 || shift == 0) {
+                group[digits++] = kHex[nibble];
+            }
+        }
+        text.append(group, digits);
+    }
+    return text;
+}
+
 std::optional<IpAddress> parseIp(std::string_view text) {
     IpAddress address;
     if (text.find(':') != std::string_view::npos) {
