@@ -7,6 +7,8 @@ Run
 ---
 1. Double-click "Start Pulse Universe.bat" (or pulse-engine.exe).
    A console window opens and your browser shows the universe at http://127.0.0.1:9000/.
+   The page is built into pulse-engine.exe, so the exe also works alone in any folder. If a "web"
+   folder sits next to the exe, that folder is used instead (handy for trying your own build).
 2. Press Ctrl+C in the console window to stop.
 
 For measured thread-to-core lines, double-click "Start Pulse Universe (Admin).bat" and accept the

@@ -69,5 +69,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $files = Get-ChildItem dist-release -Filter 'pulse-universe-*' | ForEach-Object { $_.FullName }
+          $files = Get-ChildItem dist-release -File |
+            Where-Object { $_.Name -like 'pulse-universe-*' -or $_.Name -like 'pulse-engine.exe*' } |
+            ForEach-Object { $_.FullName }
+          if (@($files).Count -ne 4) { throw "expected 4 release files, found $(@($files).Count): $($files -join ', ')" }
           gh release create $env:GITHUB_REF_NAME $files --title $env:GITHUB_REF_NAME --generate-notes

@@ -72,13 +72,19 @@ $webDist = Join-Path $root 'web\dist'
 if (-not (Test-Path (Join-Path $webDist 'index.html'))) { throw 'web/dist/index.html is missing' }
 
 # --- 2. engine (static runtime, static Boost) ----------------------------------------------
+# --- 1b. pack the frontend so the engine can embed it -------------------------------------
+New-Item -ItemType Directory -Force $OutDir | Out-Null
+$pak = Join-Path $OutDir 'web.pak'
+& (Join-Path $PSScriptRoot 'make-pak.ps1') -WebDist $webDist -Out $pak
+
 $engineDir = Join-Path $root 'engine'
 $buildDir = Join-Path $engineDir 'build-release'
 Invoke-Native 'cmake configure (x64-windows-static)' {
     cmake -S $engineDir -B $buildDir -G 'Visual Studio 17 2022' -A x64 `
         "-DCMAKE_TOOLCHAIN_FILE=$vcpkgRoot/scripts/buildsystems/vcpkg.cmake" `
         -DVCPKG_TARGET_TRIPLET=x64-windows-static `
-        -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+        -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+        "-DPULSE_WEB_PAK=$($pak.Replace('\', '/'))"
 }
 Invoke-Native 'cmake build (Release)' {
     cmake --build $buildDir --config Release
@@ -102,7 +108,6 @@ $stage = Join-Path $stageRoot $name
 if (Test-Path $stageRoot) { Remove-Item $stageRoot -Recurse -Force }
 New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item $exe $stage
-Copy-Item $webDist (Join-Path $stage 'web') -Recurse
 Copy-Item (Join-Path $PSScriptRoot 'release\*') $stage
 
 $zip = Join-Path $OutDir "$name.zip"
@@ -129,3 +134,44 @@ $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
 $size = [math]::Round((Get-Item $zip).Length / 1MB, 2)
 Write-Host "==> $zip ($size MB)"
 Write-Host "==> sha256 $hash"
+
+# --- 5. the bare exe and its checksum -------------------------------------------------------
+$bareExe = Join-Path $OutDir 'pulse-engine.exe'
+Copy-Item $exe $bareExe -Force
+$exeHash = (Get-FileHash $bareExe -Algorithm SHA256).Hash.ToLower()
+"$exeHash  pulse-engine.exe" | Set-Content -Path "$bareExe.sha256" -Encoding ascii
+Write-Host "==> $bareExe ($([math]::Round((Get-Item $bareExe).Length / 1MB, 2)) MB)"
+Write-Host "==> sha256 $exeHash"
+Remove-Item $pak -Force
+
+# --- 6. the exe alone must serve the frontend ----------------------------------------------
+# Copy it to an empty folder (no web/ next to it) and ask it for the embedded assets. The
+# no-argument launch would open a browser, so the script uses --serve --embedded-web instead.
+$probeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pulse-probe-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force $probeDir | Out-Null
+$listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
+$listener.Start()
+$port = $listener.LocalEndpoint.Port
+$listener.Stop()
+$probeExe = Join-Path $probeDir 'pulse-engine.exe'
+Copy-Item $bareExe $probeExe
+$probe = Start-Process -FilePath $probeExe -ArgumentList '--serve', '--embedded-web', '--port', $port `
+    -WorkingDirectory $probeDir -WindowStyle Hidden -PassThru
+try {
+    $script = Get-ChildItem (Join-Path $webDist 'assets') -Filter '*.js' | Select-Object -First 1
+    $checks = @('/', "/assets/$($script.Name)", '/some/spa/route')
+    foreach ($path in $checks) {
+        $response = $null
+        for ($i = 0; $i -lt 50 -and $null -eq $response; $i++) {
+            try { $response = Invoke-WebRequest "http://127.0.0.1:$port$path" -UseBasicParsing -TimeoutSec 2 }
+            catch { Start-Sleep -Milliseconds 200 }
+        }
+        if ($null -eq $response -or $response.StatusCode -ne 200) { throw "embedded web: GET $path did not return 200" }
+    }
+    $served = (Invoke-WebRequest "http://127.0.0.1:$port/assets/$($script.Name)" -UseBasicParsing).RawContentLength
+    if ($served -ne $script.Length) { throw "embedded $($script.Name) is $served bytes, expected $($script.Length)" }
+    Write-Host '==> embedded web check passed'
+} finally {
+    if (-not $probe.HasExited) { Stop-Process -Id $probe.Id -Force }
+    Remove-Item $probeDir -Recurse -Force -ErrorAction SilentlyContinue
+}
