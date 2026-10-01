@@ -26,10 +26,11 @@ constexpr GUID kSessionGuid = {
 // KERNEL_NETWORK_KEYWORD_IPV4 | KERNEL_NETWORK_KEYWORD_IPV6.
 constexpr ULONGLONG kKeywords = 0x10 | 0x20;
 
-// 이벤트 한 건이 작아 스레드 매핑 세션(256 KB)보다 작은 버퍼로 충분하다.
-constexpr ULONG kBufferKb = 16;
-constexpr ULONG kMinBuffers = 8;
-constexpr ULONG kMaxBuffers = 32;
+// 이벤트 한 건은 작지만 큰 전송은 짧은 시간에 수만 건을 낸다. 시험에서 16 KB x 32 개 버퍼는 1 KB 조각 5000 번
+// 전송의 약 9 % 를 잃었다. 64 KB x 최대 64 개(4 MB)는 그 급증을 받는다. 상주 메모리는 필요한 만큼만 늘어난다.
+constexpr ULONG kBufferKb = 64;
+constexpr ULONG kMinBuffers = 16;
+constexpr ULONG kMaxBuffers = 64;
 // 이벤트가 적을 때도 1초 안에 전달되게 한다.
 constexpr ULONG kFlushSeconds = 1;
 

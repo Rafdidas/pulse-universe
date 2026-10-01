@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 // winsock2.h 는 windows.h 보다 먼저 와야 한다.
 #include <winsock2.h>
@@ -63,11 +64,16 @@ TEST_CASE("the ETW network collector counts the bytes of a loopback TCP transfer
     if (collector == nullptr) {
         SKIP("ETW network collector unavailable: " + error);
     }
+    // 공급자를 켠 직후 잠시는 이벤트가 오지 않는다. 기다린 뒤 창을 연다.
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     collector->drain();  // 창의 시작
 
     WinsockSession winsock;
     REQUIRE(winsock.started());
     constexpr size_t kTotal = 5 * 1024 * 1024;
+    // 한 번에 보내는 크기: 큰 조각과 작은 조각(이벤트 수가 많은 경우) 둘 다 시험한다.
+    const size_t chunk_size = GENERATE(size_t{1024}, size_t{64 * 1024});
+    INFO("chunk size " << chunk_size);
 
     SOCKET listener = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     REQUIRE(listener != INVALID_SOCKET);
@@ -101,7 +107,7 @@ TEST_CASE("the ETW network collector counts the bytes of a loopback TCP transfer
             received += static_cast<size_t>(n);
         }
     });
-    std::vector<char> chunk(64 * 1024, 'x');
+    std::vector<char> chunk(chunk_size, 'x');
     size_t sent = 0;
     while (sent < kTotal) {
         const int n = ::send(client, chunk.data(), static_cast<int>(chunk.size()), 0);
@@ -131,6 +137,7 @@ TEST_CASE("the ETW network collector counts loopback UDP datagrams when elevated
     if (collector == nullptr) {
         SKIP("ETW network collector unavailable: " + error);
     }
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     collector->drain();
 
     WinsockSession winsock;
@@ -185,4 +192,105 @@ TEST_CASE("the ETW network session is gone after the collector is destroyed", "[
 
     std::unique_ptr<EtwNetworkCollector> again = EtwNetworkCollector::start(error);
     REQUIRE(again != nullptr);
+}
+
+TEST_CASE("the ETW network collector counts IPv6 loopback TCP and UDP when elevated", "[etw][network]") {
+    std::string error;
+    std::unique_ptr<EtwNetworkCollector> collector = EtwNetworkCollector::start(error);
+    if (collector == nullptr) {
+        SKIP("ETW network collector unavailable: " + error);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    collector->drain();
+
+    WinsockSession winsock;
+    REQUIRE(winsock.started());
+    const IpBytes loopback6 = parseIp("::1")->bytes;
+    const auto portOf = [](SOCKET socket) {
+        sockaddr_in6 address{};
+        int length = sizeof(address);
+        REQUIRE(::getsockname(socket, reinterpret_cast<sockaddr*>(&address), &length) == 0);
+        return static_cast<uint16_t>(::ntohs(address.sin6_port));
+    };
+    sockaddr_in6 any{};
+    any.sin6_family = AF_INET6;
+    any.sin6_addr = in6addr_loopback;
+
+    // TCP: 1 MB 를 16 KB 조각으로.
+    constexpr size_t kTcpTotal = 1024 * 1024;
+    SOCKET listener = ::socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+    REQUIRE(listener != INVALID_SOCKET);
+    REQUIRE(::bind(listener, reinterpret_cast<sockaddr*>(&any), sizeof(any)) == 0);
+    REQUIRE(::listen(listener, 1) == 0);
+    const uint16_t listener_port = portOf(listener);
+    sockaddr_in6 target = any;
+    target.sin6_port = ::htons(listener_port);
+    SOCKET client = ::socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+    REQUIRE(client != INVALID_SOCKET);
+    REQUIRE(::connect(client, reinterpret_cast<sockaddr*>(&target), sizeof(target)) == 0);
+    SOCKET accepted = ::accept(listener, nullptr, nullptr);
+    REQUIRE(accepted != INVALID_SOCKET);
+    const uint16_t client_port = portOf(client);
+    std::thread receiver([&] {
+        std::vector<char> buffer(16 * 1024);
+        size_t received = 0;
+        while (received < kTcpTotal) {
+            const int n = ::recv(accepted, buffer.data(), static_cast<int>(buffer.size()), 0);
+            if (n <= 0) {
+                break;
+            }
+            received += static_cast<size_t>(n);
+        }
+    });
+    std::vector<char> chunk(16 * 1024, 't');
+    for (size_t sent = 0; sent < kTcpTotal;) {
+        const int n = ::send(client, chunk.data(), static_cast<int>(chunk.size()), 0);
+        REQUIRE(n > 0);
+        sent += static_cast<size_t>(n);
+    }
+    receiver.join();
+
+    // UDP: 50 개의 1 KB 데이터그램.
+    SOCKET udp_receiver = ::socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+    SOCKET udp_sender = ::socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+    REQUIRE(udp_receiver != INVALID_SOCKET);
+    REQUIRE(udp_sender != INVALID_SOCKET);
+    REQUIRE(::bind(udp_receiver, reinterpret_cast<sockaddr*>(&any), sizeof(any)) == 0);
+    REQUIRE(::bind(udp_sender, reinterpret_cast<sockaddr*>(&any), sizeof(any)) == 0);
+    const uint16_t udp_receiver_port = portOf(udp_receiver);
+    const uint16_t udp_sender_port = portOf(udp_sender);
+    sockaddr_in6 udp_target = any;
+    udp_target.sin6_port = ::htons(udp_receiver_port);
+    std::vector<char> datagram(1024, 'u');
+    std::vector<char> buffer(1024);
+    for (int i = 0; i < 50; ++i) {
+        REQUIRE(::sendto(udp_sender, datagram.data(), 1024, 0, reinterpret_cast<sockaddr*>(&udp_target),
+                         sizeof(udp_target)) == 1024);
+        REQUIRE(::recv(udp_receiver, buffer.data(), 1024, 0) == 1024);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+
+    const std::optional<RawNetworkTraffic> traffic = collector->drain();
+    for (const SOCKET socket : {accepted, client, listener, udp_receiver, udp_sender}) {
+        ::closesocket(socket);
+    }
+    REQUIRE(traffic.has_value());
+
+    const auto find = [&](NetProtocol protocol, uint16_t p1, uint16_t p2) {
+        const FlowKey wanted = makeFlowKey(protocol, ::GetCurrentProcessId(), loopback6, p1, loopback6, p2);
+        for (const RawFlowTraffic& flow : traffic->flows) {
+            if (flow.key == wanted) {
+                return flow;
+            }
+        }
+        return RawFlowTraffic{};
+    };
+    const RawFlowTraffic tcp_flow = find(NetProtocol::Tcp, listener_port, client_port);
+    CAPTURE(traffic->flows.size(), tcp_flow.bytes_sent, tcp_flow.bytes_received);
+    CHECK(tcp_flow.bytes_sent >= kTcpTotal);
+    CHECK(tcp_flow.bytes_received >= kTcpTotal);
+    const RawFlowTraffic udp_flow = find(NetProtocol::Udp, udp_sender_port, udp_receiver_port);
+    CAPTURE(udp_flow.bytes_sent, udp_flow.bytes_received);
+    CHECK(udp_flow.bytes_sent >= 50u * 1024u);
+    CHECK(udp_flow.bytes_received >= 50u * 1024u);
 }
